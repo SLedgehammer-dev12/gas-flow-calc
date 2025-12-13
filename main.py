@@ -618,6 +618,7 @@ class GasFlowCalculatorApp:
         self.progress_canvas.bind("<Button-1>", lambda e: self.start_calculation())
         self.progress_canvas.bind("<Enter>", self._on_progress_hover)
         self.progress_canvas.bind("<Leave>", self._on_progress_leave)
+        self.progress_canvas.bind("<Configure>", self._on_progress_resize)
         
         self.btn_show_graphs = ttk.Button(btn_frame, text=t("show_graphs"), command=self.show_graphs, state="disabled")
         self.btn_show_graphs.pack(fill="x", pady=5)
@@ -667,6 +668,11 @@ class GasFlowCalculatorApp:
     
     def _on_progress_leave(self, event):
         """Mouse leave efekti."""
+        if not self.is_calculating:
+            self._draw_progress_button(t("btn_calculate"), 0, idle=True)
+    
+    def _on_progress_resize(self, event):
+        """Pencere boyutu değiştiğinde butonu yeniden çiz."""
         if not self.is_calculating:
             self._draw_progress_button(t("btn_calculate"), 0, idle=True)
     
