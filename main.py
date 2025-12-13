@@ -742,7 +742,7 @@ class GasFlowCalculatorApp:
         
         ttk.Label(top_frame, text=t("gas_search")).pack(side="left")
         self.gas_search_var = tk.StringVar()
-        self.gas_search_var.trace("w", self.filter_gas_list)
+        self.gas_search_var.trace_add("write", self.filter_gas_list)
         entry = ttk.Entry(top_frame, textvariable=self.gas_search_var, width=20)
         entry.pack(side="left", padx=5)
         
