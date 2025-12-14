@@ -13,5 +13,5 @@
     "dene.json"
   ],
   "asset_name_regex": "(gas[-_ ]?flow[-_ ]?calc).*\\.zip",
-  "language": "en"
+  "language": "tr"
 }

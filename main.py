@@ -422,6 +422,14 @@ class GasFlowCalculatorApp:
         menubar.add_cascade(label=t("menu_language"), menu=lang_menu)
         lang_menu.add_command(label="🇹🇷 " + t("lang_turkish"), command=lambda: self.change_language("tr"))
         lang_menu.add_command(label="🇬🇧 " + t("lang_english"), command=lambda: self.change_language("en"))
+        
+        # Yardım Menüsü
+        help_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label=t("menu_help"), menu=help_menu)
+        help_menu.add_command(label=t("menu_user_guide"), command=self.show_user_guide)
+        help_menu.add_command(label=t("program_details_title"), command=self.show_program_details)
+        help_menu.add_separator()
+        help_menu.add_command(label=t("menu_about"), command=self.show_about)
     
     def change_language(self, lang_code):
         """Dili değiştir ve uygulamayı yeniden başlat."""
@@ -448,6 +456,93 @@ class GasFlowCalculatorApp:
         if messagebox.askyesno(t("lang_change_title"), t("lang_change_message") + "\n\n" + t("lang_restart_now")):
             self.root.destroy()
             os.execl(sys.executable, sys.executable, *sys.argv)
+    
+    def show_user_guide(self):
+        """Kullanım kılavuzunu gösteren pencere."""
+        guide_window = tk.Toplevel(self.root)
+        guide_window.title(t("guide_title"))
+        guide_window.geometry("700x600")
+        guide_window.resizable(True, True)
+        
+        # İkon varsa ayarla
+        try:
+            guide_window.iconbitmap(self.root.iconbitmap())
+        except:
+            pass
+        
+        # Başlık
+        title_frame = ttk.Frame(guide_window)
+        title_frame.pack(fill="x", padx=15, pady=(15, 5))
+        ttk.Label(title_frame, text=t("guide_title"), style="Header.TLabel").pack(anchor="w")
+        
+        # İçerik (kaydırılabilir)
+        content_frame = ttk.Frame(guide_window)
+        content_frame.pack(fill="both", expand=True, padx=15, pady=10)
+        
+        guide_text = ScrolledText(content_frame, wrap="word", font=("Consolas", 10), 
+                                   padx=10, pady=10, bg="#fafafa")
+        guide_text.pack(fill="both", expand=True)
+        guide_text.insert("1.0", t("guide_content"))
+        guide_text.config(state="disabled")  # Salt okunur
+        
+        # Kapat butonu
+        btn_frame = ttk.Frame(guide_window)
+        btn_frame.pack(fill="x", padx=15, pady=(5, 15))
+        ttk.Button(btn_frame, text="OK", command=guide_window.destroy, width=10).pack(side="right")
+        
+        # Pencere odağı
+        guide_window.transient(self.root)
+        guide_window.grab_set()
+        guide_window.focus_set()
+    
+    def show_about(self):
+        """Hakkında dialogu."""
+        about_text = f"""{t("app_title")}
+
+{t("msg_version")}: {APP_VERSION}
+
+{t("about_description")}
+
+© 2024"""
+        messagebox.showinfo(t("about_title"), about_text)
+    
+    def show_program_details(self):
+        """Program detayları ve referanslar penceresini göster."""
+        details_window = tk.Toplevel(self.root)
+        details_window.title(t("program_details_title"))
+        details_window.geometry("800x700")
+        details_window.resizable(True, True)
+        
+        # İkon varsa ayarla
+        try:
+            details_window.iconbitmap(self.root.iconbitmap())
+        except:
+            pass
+        
+        # Başlık
+        title_frame = ttk.Frame(details_window)
+        title_frame.pack(fill="x", padx=15, pady=(15, 5))
+        ttk.Label(title_frame, text=t("program_details_title"), style="Header.TLabel").pack(anchor="w")
+        
+        # İçerik (kaydırılabilir)
+        content_frame = ttk.Frame(details_window)
+        content_frame.pack(fill="both", expand=True, padx=15, pady=10)
+        
+        details_text = ScrolledText(content_frame, wrap="word", font=("Consolas", 10), 
+                                     padx=10, pady=10, bg="#fafafa")
+        details_text.pack(fill="both", expand=True)
+        details_text.insert("1.0", t("program_details_content"))
+        details_text.config(state="disabled")  # Salt okunur
+        
+        # Kapat butonu
+        btn_frame = ttk.Frame(details_window)
+        btn_frame.pack(fill="x", padx=15, pady=(5, 15))
+        ttk.Button(btn_frame, text="OK", command=details_window.destroy, width=10).pack(side="right")
+        
+        # Pencere odağı
+        details_window.transient(self.root)
+        details_window.grab_set()
+        details_window.focus_set()
 
     def setup_styles(self):
         style = ttk.Style()

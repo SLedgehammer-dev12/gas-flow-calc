@@ -219,6 +219,122 @@ TRANSLATIONS = {
         "calculating_progress": "Hesaplanıyor... %",
         "show_graphs": "Grafikleri Göster",
         "save_report": "Raporu Kaydet",
+        
+        # Menu - Help
+        "menu_help": "Yardım",
+        "menu_user_guide": "Kullanım Kılavuzu",
+        "menu_about": "Hakkında",
+        
+        # About Dialog
+        "about_title": "Hakkında",
+        "about_description": "Gaz akış, basınç kaybı ve boru mukavemet hesaplamalarını mühendislik standartlarına göre yapan hesaplama aracı.",
+        
+        # User Guide
+        "guide_title": "Kullanım Kılavuzu",
+        "guide_content": """KULLANIM KILAVUZU
+=================
+
+Program, gaz akış, basınç kaybı ve boru mukavemet hesaplamalarını mühendislik standartlarına göre yapar.
+
+1.  GAZ KARIŞIMI:
+    • Bileşenleri seçip yüzdeleri girin
+    • Canlı Arama ile gaz listesini kolayca filtreleyebilirsiniz
+    • Bileşim Türü (Mol % / Kütle %) seçimi yapın
+
+2.  GİRİŞ KOŞULLARI:
+    • Giriş Basıncı, Sıcaklık ve birimlerini seçin
+
+3.  AKIŞ VE TASARIM KRİTERLERİ:
+    • Akış Değeri ve Maks. Hız limitini girin
+    • Tasarım Basıncı, Malzeme ve ASME B31.8 tasarım faktörlerini (F, E, T) belirleyin
+    • Bu veriler, boru mukavemet kontrolü için kritik öneme sahiptir
+
+4.  HESAPLAMA SEÇENEKLERİ:
+    • Akışkan Özelliği: Akışkanın boru boyunca yoğunluk değişimini ihmal edip 
+      etmeyeceğinizi seçin. Uzun boru hatları için "Sıkıştırılabilir" seçilmelidir.
+    • Termodinamik Model: Gaz özelliklerini hesaplamak için kullanılacak 
+      matematiksel modeli seçin (Örn: Peng-Robinson veya CoolProp).
+    • Hesaplanacak Değer:
+        - Çıkış Basıncı: Belirtilen uzunluk için çıkış basıncını hesaplar.
+        - Maksimum Uzunluk: Giriş ve istenen çıkış basıncı arasındaki 
+          maksimum boru uzunluğunu hesaplar.
+        - Minimum Çap: Hız limiti ve tasarım basıncına göre en hafif 
+          ticari boruyu seçer (ASME B36.10M listesi taranır).
+
+5.  BORU GEOMETRİSİ VE ELEMANLARI:
+    • Çap / Et Kalınlığı: Sadece "Çıkış Basıncı" ve "Maksimum Uzunluk" 
+      modlarında kullanılır.
+    • Boru Elemanları: Boru hattındaki valf ve dirsek gibi ekipmanlardan 
+      kaynaklanan lokal kayıpları hesaplamak için adetlerini girin.
+    • Kv/Cv girişleri: Küresel vanaların K-faktörünü daha hassas 
+      hesaplamaya yarar.
+
+6.  PROGRAM LOGLARI SEKMESİ:
+    • Tüm iterasyonlar, kritik kararlar ve hatalar bu sekmede 
+      zaman damgasıyla takip edilebilir.
+    • Filtre seçenekleri ile sadece belirli seviyeleri görüntüleyebilirsiniz.
+
+NOTLAR:
+• Virgül ve nokta ile ondalık sayı girişi desteklenir.
+• Hesaplama sırasında ilerleme durumu takip edilebilir.
+• Sonuçlar tabloda, şemada ve detaylı rapor olarak görüntülenebilir.
+• Proje kaydetme/yükleme ile çalışmalarınızı saklayabilirsiniz.
+""",
+        
+        # Program Details
+        "program_details_title": "Program Detayı ve Referanslar",
+        "program_details_content": """PROGRAM DETAYI VE REFERANSLAR
+=============================
+
+Bu program, Gaz Kompresörleri, Pompalar, Turbo Makinalar ve Akışkanlar Mekaniği alanındaki uzmanlığınızı yansıtacak şekilde tasarlanmıştır.
+
+KULLANILAN TEMEL PRENSİPLER:
+
+1.  AKIM ANALİZİ:
+    • Hız Kriteri: Hız kontrolü için minimum gerekli iç çap hesaplanır:
+        A_min = Q_akt / v_max
+    • Sürtünme Faktörü (f): Darcy-Weisbach denklemi için Colebrook-White 
+      korelasyonunun iteratif çözümü kullanılır.
+    • Basınç Kaybı (ΔP): Darcy-Weisbach denklemi ve lokal kayıp katsayıları (ΣK):
+        ΔP_toplam = f × (L/D_i) × (ρ×v²/2) + ΣK × (ρ×v²/2)
+    • Sıkıştırılabilir Akış: İzotermal akış varsayımı altında ortalama 
+      koşulların iteratif çözümü.
+
+2.  TERMODİNAMİK MODELLER (Z, ρ, Cp, μ Hesaplamaları):
+    • CoolProp (Yüksek Hassasiyet): Helmholtz Serbest Enerji denklemlerine 
+      dayalı, en yüksek doğruluk seviyesinde termodinamik özellik hesaplaması 
+      yapar. Viskozite hesaplamasındaki kritik nokta hataları, Lee-Kesler/LBC 
+      korelasyonlarına dayalı kaba tahmin ile güvenli bir şekilde aşılır.
+    • Peng-Robinson (PR EOS): Hidrokarbon işleme endüstrisinde faz denge ve 
+      yoğunluk hesaplamaları için Kübik Durum Denklemi standardıdır.
+    • Soave-Redlich-Kwong (SRK EOS): PR'a alternatif olarak kullanılan bir 
+      diğer yaygın Kübik Durum Denklemi.
+    • Pseudo-Critical (Kay's Rule): Karışımın sahte-kritik noktalarını 
+      belirleyerek Z faktörünü Standing-Katz diyagramı korelasyonları ile 
+      tahmin eden, hızlı mühendislik kestirim modelidir.
+
+3.  BORU MUKAVEMETİ VE SEÇİMİ:
+    • Boru Et Kalınlığı (ASME B31.8 - Gaz İletim): 
+      Gerekli minimum et kalınlığı (Hoop Stress için):
+        t_gerekli = (P_tasarım × D_d) / (2 × SMYS × F × E × T)
+      
+      P_tasarım: Tasarım Basıncı (Gauge)
+      D_d: Dış Çap
+      SMYS: Malzemenin Akma Dayanımı
+      F, E, T: ASME B31.8 tasarım faktörleri
+      
+    • Ticari Boru Seçimi: ASME B36.10M-2018 standardına göre listelenen tüm 
+      ticari NPS ve Schedule'lar denenir ve hem hız kriterini hem de 
+      mukavemet kriterini sağlayan en küçük boru seçilir.
+
+REFERANSLAR:
+• ASME B31.8 (Gas Transmission and Distribution Piping Systems)
+• ASME B36.10M (Welded and Seamless Wrought Steel Pipe)
+• CoolProp Documentation (EOS implementations for fluid properties)
+• Peng, D.-Y.; Robinson, D. B. (1976). Ind. Eng. Chem. Fundam., 15(1), 59-64.
+• Soave, G. (1972). Chem. Eng. Sci., 27(6), 1197-1203.
+• Kay, W.B. (1936). Ind. Eng. Chem., 28(9), 1014-1019.
+""",
     },
     
     "en": {
@@ -435,6 +551,123 @@ TRANSLATIONS = {
         "calculating_progress": "Calculating... %",
         "show_graphs": "Show Graphs",
         "save_report": "Save Report",
+        
+        # Menu - Help
+        "menu_help": "Help",
+        "menu_user_guide": "User Guide",
+        "menu_about": "About",
+        
+        # About Dialog
+        "about_title": "About",
+        "about_description": "A calculation tool for gas flow, pressure drop and pipe strength analysis according to engineering standards.",
+        
+        # User Guide
+        "guide_title": "User Guide",
+        "guide_content": """USER GUIDE
+=================
+
+This program performs gas flow, pressure drop, and pipe strength calculations according to engineering standards.
+
+1.  GAS MIXTURE:
+    • Select components and enter percentages
+    • Use Live Search to easily filter the gas list
+    • Choose Composition Type (Mol % / Mass %)
+
+2.  INPUT CONDITIONS:
+    • Select Inlet Pressure, Temperature and their units
+
+3.  FLOW AND DESIGN CRITERIA:
+    • Enter Flow Rate and Max. Velocity limit
+    • Specify Design Pressure, Material and ASME B31.8 design factors (F, E, T)
+    • This data is critical for pipe strength verification
+
+4.  CALCULATION OPTIONS:
+    • Fluid Property: Choose whether to ignore density changes along 
+      the pipe. For long pipelines, "Compressible" should be selected.
+    • Thermodynamic Model: Select the mathematical model for calculating 
+      gas properties (e.g., Peng-Robinson or CoolProp).
+    • Calculation Target:
+        - Outlet Pressure: Calculates outlet pressure for a given length.
+        - Maximum Length: Calculates maximum pipe length between inlet 
+          and target outlet pressure.
+        - Minimum Diameter: Selects the lightest commercial pipe based 
+          on velocity limit and design pressure (ASME B36.10M list).
+
+5.  PIPE GEOMETRY AND FITTINGS:
+    • Diameter / Wall Thickness: Used only in "Outlet Pressure" and 
+      "Maximum Length" modes.
+    • Pipe Fittings: Enter quantities for valves and elbows to calculate 
+      local losses from equipment in the pipeline.
+    • Kv/Cv inputs: Enable more precise K-factor calculation for 
+      ball valves.
+
+6.  ACTIVITY LOG TAB:
+    • All iterations, critical decisions and errors can be tracked 
+      in this tab with timestamps.
+    • Use filter options to display only specific levels.
+
+NOTES:
+• Decimal number input with comma and dot is supported.
+• Calculation progress can be tracked during execution.
+• Results can be viewed in table, schematic and detailed report formats.
+• Save/load projects to preserve your work.
+""",
+        
+        # Program Details
+        "program_details_title": "Program Details and References",
+        "program_details_content": """PROGRAM DETAILS AND REFERENCES
+==============================
+
+This program is designed to reflect your expertise in Gas Compressors, Pumps, Turbomachinery, and Fluid Mechanics.
+
+FUNDAMENTAL PRINCIPLES USED:
+
+1.  FLOW ANALYSIS:
+    • Velocity Criterion: Minimum required inner diameter is calculated for 
+      velocity control:
+        A_min = Q_act / v_max
+    • Friction Factor (f): Iterative solution of the Colebrook-White 
+      correlation for the Darcy-Weisbach equation.
+    • Pressure Loss (ΔP): Darcy-Weisbach equation and local loss coefficients (ΣK):
+        ΔP_total = f × (L/D_i) × (ρ×v²/2) + ΣK × (ρ×v²/2)
+    • Compressible Flow: Iterative solution of average conditions under 
+      isothermal flow assumption.
+
+2.  THERMODYNAMIC MODELS (Z, ρ, Cp, μ Calculations):
+    • CoolProp (High Accuracy): Thermodynamic property calculations based on 
+      Helmholtz Free Energy equations with the highest accuracy level. 
+      Critical point errors in viscosity calculations are safely handled 
+      using Lee-Kesler/LBC correlation fallback estimates.
+    • Peng-Robinson (PR EOS): The standard Cubic Equation of State for phase 
+      equilibrium and density calculations in the hydrocarbon processing industry.
+    • Soave-Redlich-Kwong (SRK EOS): Another commonly used Cubic Equation of 
+      State as an alternative to PR.
+    • Pseudo-Critical (Kay's Rule): A fast engineering estimation model that 
+      determines the pseudo-critical points of the mixture and estimates the 
+      Z factor using Standing-Katz chart correlations.
+
+3.  PIPE STRENGTH AND SELECTION:
+    • Wall Thickness (ASME B31.8 - Gas Transmission): 
+      Required minimum wall thickness (for Hoop Stress):
+        t_required = (P_design × D_o) / (2 × SMYS × F × E × T)
+      
+      P_design: Design Pressure (Gauge)
+      D_o: Outer Diameter
+      SMYS: Specified Minimum Yield Strength
+      F, E, T: ASME B31.8 design factors
+      
+    • Commercial Pipe Selection: All commercial NPS and Schedules listed per 
+      ASME B36.10M-2018 standard are evaluated, and the smallest pipe meeting 
+      both velocity and strength criteria is selected.
+
+REFERENCES:
+• ASME B31.8 (Gas Transmission and Distribution Piping Systems)
+• ASME B36.10M (Welded and Seamless Wrought Steel Pipe)
+• CoolProp Documentation (EOS implementations for fluid properties)
+• Peng, D.-Y.; Robinson, D. B. (1976). Ind. Eng. Chem. Fundam., 15(1), 59-64.
+• Soave, G. (1972). Chem. Eng. Sci., 27(6), 1197-1203.
+• Kay, W.B. (1936). Ind. Eng. Chem., 28(9), 1014-1019.
+""",
     }
 }
 
