@@ -12,6 +12,7 @@ import sys
 
 # Modüler importlar
 from app_paths import get_config_path, get_install_dir, get_session_file_path, load_config, save_config
+from release_metadata import APP_VERSION, get_release_notes, get_release_notes_title
 from data import COOLPROP_GASES, PIPE_MATERIALS, PIPE_ROUGHNESS, FITTING_K_FACTORS, ASME_B36_10M_DATA, GAS_PRESETS
 from calculations import GasFlowCalculator
 from updater import Updater
@@ -25,10 +26,6 @@ from ui.panels.process_panel import ProcessPanel
 from ui.panels.pipe_panel import PipePanel
 from ui.panels.results_panel import ResultsPanel
 from ui.panels.log_panel import LogPanel
-
-
-# Uygulama sürümü (semantic versioning)
-APP_VERSION = "6.1.1"
 
 
 def load_app_config():
@@ -55,7 +52,7 @@ load_language_from_config()
 class GasFlowCalculatorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(t("app_title"))
+        self.root.title(f"{t('app_title')} V{APP_VERSION}")
         self.root.geometry("1450x950")
         self.root.minsize(1100, 800)
 
@@ -112,12 +109,12 @@ class GasFlowCalculatorApp:
         # Thread-safe log polling başlat (ana thread'de çalışır)
         self._poll_log_queue()
         
-        self.log_message(t("msg_program_started") + ": V6")
+        self.log_message(f"{t('msg_program_started')}: V{APP_VERSION}")
         self.log_message(f"{t('msg_version')}: {APP_VERSION}")
         # Arka planda sessiz güncelleme kontrolü
         self.root.after(500, self.silent_update_check)
         
-        # Güncelleme Notlarını Göster (V6.1)
+        # Güncelleme notlarını göster
         self.check_changelog()
 
     def setup_default_state(self):
@@ -144,22 +141,23 @@ class GasFlowCalculatorApp:
     def check_changelog(self):
         try:
             cfg = load_app_config()
-            show_cl = cfg.get("show_changelog_v61", True)
-            if show_cl:
+            dismissed_version = cfg.get("dismissed_release_notes_version")
+            if dismissed_version != APP_VERSION:
                 self.root.after(1000, self.show_changelog_dialog)
         except Exception:
             pass
 
     def show_changelog_dialog(self):
+        language = get_language()
         top = tk.Toplevel(self.root)
-        top.title(t("changelog_title"))
+        top.title(get_release_notes_title(APP_VERSION, language))
         top.geometry("650x500")
         top.transient(self.root)
         top.grab_set()
 
         txt = ScrolledText(top, wrap="word", font=("Segoe UI", 10))
         txt.pack(fill="both", expand=True, padx=10, pady=10)
-        txt.insert("1.0", t("changelog_content"))
+        txt.insert("1.0", get_release_notes(APP_VERSION, language))
         txt.config(state="disabled")
 
         dont_show_var = tk.BooleanVar(value=False)
@@ -170,7 +168,7 @@ class GasFlowCalculatorApp:
             if dont_show_var.get():
                 try:
                     cfg = load_app_config()
-                    cfg["show_changelog_v61"] = False
+                    cfg["dismissed_release_notes_version"] = APP_VERSION
                     save_app_config(cfg)
                 except Exception:
                     pass
@@ -665,7 +663,7 @@ class GasFlowCalculatorApp:
 
         # Sol: Uygulama adı
         tk.Label(footer,
-                 text="  Gas Flow Calc V6.1  |  © 2025 Mühendislik Araçları",
+                 text=f"  Gas Flow Calc V{APP_VERSION}  |  © 2025 Mühendislik Araçları",
                  font=("Segoe UI", 8), bg="#1a237e", fg="#c5cae9").pack(side="left")
 
         # Sağ: Durum etiketleri
@@ -1663,6 +1661,38 @@ class GasFlowCalculatorApp:
         show_graphs(self.root, getattr(self, 'last_result', None))
     # Eski show_graphs silindi (ui.graphs'a taşındı)
 
+    def _get_default_update_dir(self):
+        downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads")
+        if os.path.isdir(downloads_dir):
+            return downloads_dir
+        return get_install_dir()
+
+    def _get_update_filetypes(self, asset_name):
+        ext = os.path.splitext(asset_name)[1].lower()
+        if ext == ".exe":
+            return [("Executable Files", "*.exe"), ("All Files", "*.*")]
+        if ext == ".zip":
+            return [("Zip Files", "*.zip"), ("All Files", "*.*")]
+        return [("All Files", "*.*")]
+
+    def _prompt_update_download_path(self, asset_info):
+        asset_name = asset_info.get("name") or f"Gas.Flow.Calc.V{APP_VERSION}.exe"
+        ext = os.path.splitext(asset_name)[1].lower()
+        return filedialog.asksaveasfilename(
+            title=t("update_save_as"),
+            initialdir=self._get_default_update_dir(),
+            initialfile=asset_name,
+            defaultextension=ext,
+            filetypes=self._get_update_filetypes(asset_name),
+        )
+
+    def _open_download_folder(self, file_path):
+        folder_path = os.path.dirname(file_path)
+        try:
+            os.startfile(folder_path)
+        except Exception:
+            webbrowser.open(folder_path)
+
     # --- Güncelleme İşlevleri ---
     def silent_update_check(self):
         try:
@@ -1696,22 +1726,33 @@ class GasFlowCalculatorApp:
 
     def download_latest_release(self):
         try:
+            asset_info = self.updater.get_latest_asset_info()
+            if not asset_info:
+                messagebox.showinfo(t("dialog_info"), t("update_no_asset"))
+                return
+
+            save_path = self._prompt_update_download_path(asset_info)
+            if not save_path:
+                self.log_message(t("update_download_cancelled"), level="INFO")
+                return
+
             self.log_message(t("update_downloading"))
-            asset_path = self.updater.download_latest_asset()
+            asset_path = self.updater.download_latest_asset(destination_path=save_path)
             if asset_path:
                 self.last_download_path = asset_path
-                if messagebox.askyesno(t("dialog_info"), f"{t('update_downloaded')}: {asset_path}\n\n{t('update_apply_ask')}"):
-                    self.apply_update(asset_path)
+                if asset_path.lower().endswith(".zip"):
+                    if messagebox.askyesno(t("dialog_info"), f"{t('update_downloaded')}: {asset_path}\n\n{t('update_apply_ask')}"):
+                        self.apply_update(asset_path)
+                    else:
+                        messagebox.showinfo(t("dialog_info"), t("update_later"))
                 else:
-                    messagebox.showinfo(t("dialog_info"), t("update_later"))
-                try:
-                    os.startfile(os.path.dirname(asset_path))
-                except Exception:
-                    webbrowser.open(os.path.dirname(asset_path))
+                    msg = f"{t('update_downloaded')}: {asset_path}\n\n{t('update_exe_ready')}\n\n{t('update_open_folder_ask')}"
+                    if messagebox.askyesno(t("dialog_info"), msg):
+                        self._open_download_folder(asset_path)
             else:
-                messagebox.showinfo("Bilgi", "İndirilebilir bir varlık bulunamadı.")
+                messagebox.showinfo(t("dialog_info"), t("update_no_asset"))
         except Exception as e:
-            messagebox.showerror("İndirme Hatası", str(e))
+            messagebox.showerror(t("dialog_error"), str(e))
 
     def open_update_config(self):
         try:

@@ -7,7 +7,7 @@ _current_lang = "tr"
 TRANSLATIONS = {
     "tr": {
         # App Title
-        "app_title": "Doğal Gaz Hesaplayıcı V6.1",
+        "app_title": "Doğal Gaz Hesaplayıcı",
         
         # Menu - File
         "menu_file": "Dosya",
@@ -181,9 +181,13 @@ TRANSLATIONS = {
         "update_up_to_date": "Uygulamanız güncel.",
         "update_downloading": "Son sürüm indiriliyor...",
         "update_downloaded": "Dosya indirildi",
+        "update_download_cancelled": "Güncelleme indirme işlemi iptal edildi.",
+        "update_save_as": "Güncelleme dosyasını kaydet",
         "update_apply_ask": "Şimdi güncellemeyi uygulamak ister misiniz?",
         "update_later": "Daha sonra 'Zip'ten Güncellemeyi Uygula...' menüsünden uygulayabilirsiniz.",
         "update_no_asset": "İndirilebilir bir varlık bulunamadı.",
+        "update_exe_ready": "İndirilen dosya bir .exe güncellemesidir. Mevcut programı kapatıp indirilen dosyayı çalıştırarak kurulumu tamamlayabilirsiniz.",
+        "update_open_folder_ask": "İndirilen dosyanın bulunduğu klasör açılsın mı?",
         "update_applied": "Güncelleme başarıyla uygulandı. Uygulamayı yeniden başlatmanız önerilir.",
         
         # Dialogs
@@ -250,7 +254,7 @@ TRANSLATIONS = {
         "about_description": "Gaz akış, basınç kaybı ve boru mukavemet hesaplamalarını mühendislik standartlarına göre yapan hesaplama aracı.",
         
         # Changelog Dialog
-        "changelog_title": "Güncelleme Notları (Versiyon 6.1)",
+        "changelog_title": "Güncelleme Notları",
         "changelog_content": """YENİ VE ÖNE ÇIKAN ÖZELLİKLER (V6.1 Güncellemeleri)
 =================================================
 
@@ -393,7 +397,7 @@ REFERANSLAR:
     
     "en": {
         # App Title
-        "app_title": "Natural Gas Calculator V6.1",
+        "app_title": "Natural Gas Calculator",
         
         # Menu - File
         "menu_file": "File",
@@ -560,9 +564,13 @@ REFERANSLAR:
         "update_up_to_date": "Your application is up to date.",
         "update_downloading": "Downloading latest version...",
         "update_downloaded": "File downloaded",
+        "update_download_cancelled": "Update download was cancelled.",
+        "update_save_as": "Save update file",
         "update_apply_ask": "Do you want to apply the update now?",
         "update_later": "You can apply it later from 'Apply Update from Zip...' menu.",
         "update_no_asset": "No downloadable asset found.",
+        "update_exe_ready": "The downloaded file is a .exe update package. Close the current program and run the downloaded file to complete the update.",
+        "update_open_folder_ask": "Open the folder that contains the downloaded file?",
         "update_applied": "Update applied successfully. Please restart the application.",
         
         # Dialogs
@@ -629,7 +637,7 @@ REFERANSLAR:
         "about_description": "A calculation tool for gas flow, pressure drop and pipe strength analysis according to engineering standards.",
 
         # Changelog Dialog
-        "changelog_title": "Update Notes (Version 6.1)",
+        "changelog_title": "Update Notes",
         "changelog_content": """Version 5.0 Core Features:
 --------------------------
 1. New Thermodynamic Models: Peng-Robinson, SRK and Kay's Rule.

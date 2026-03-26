@@ -1,5 +1,5 @@
 {
-  "repo": "SLedgehammer-dev12/Programlar",
+  "repo": "SLedgehammer-dev12/gas-flow-calc-v6-1",
   "update_mode": "releases",
   "branch": "gas-flow-calc-v5",
   "version_source_path": "",
@@ -12,6 +12,6 @@
     "_backups",
     "dene.json"
   ],
-  "asset_name_regex": "(gas[-_ ]?flow[-_ ]?calc).*\\.exe",
+  "asset_name_regex": "(gas[\\s._-]*flow[\\s._-]*calc).*\\.(exe|zip)$",
   "language": "tr"
 }

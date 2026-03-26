@@ -9,7 +9,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-from app_paths import load_config
+from app_paths import load_config, save_config
 
 
 GITHUB_API_RELEASES = "https://api.github.com/repos/{repo}/releases/latest"
@@ -17,10 +17,10 @@ GITHUB_BRANCH_ZIP = "https://github.com/{repo}/archive/refs/heads/{branch}.zip"
 GITHUB_RAW_FILE = "https://raw.githubusercontent.com/{repo}/{branch}/{path}"
 
 DEFAULT_CONFIG = {
-    "repo": "SLedgehammer-dev12/Programlar",
-    "asset_name_regex": r"(gas[-_ ]?flow[-_ ]?calc).*\.exe",
+    "repo": "SLedgehammer-dev12/gas-flow-calc-v6-1",
+    "asset_name_regex": r"(gas[\s._-]*flow[\s._-]*calc).*\.(exe|zip)$",
     "update_mode": "releases",
-    "branch": "gas-flow-calc-v5",
+    "branch": "main",
     "version_source_path": "",
     "version_regex": r'APP_VERSION\s*=\s*"(\d+\.\d+\.\d+)"',
     "app_subdir_in_zip": "",
@@ -32,13 +32,27 @@ DEFAULT_CONFIG = {
 def _load_config(log):
     try:
         config = load_config(DEFAULT_CONFIG)
-        if (
-            config.get("repo") == DEFAULT_CONFIG["repo"]
-            and config.get("update_mode") == "branch"
-            and config.get("branch") == "gas-flow-calc-v5"
-        ):
+        migrated = False
+
+        if config.get("repo") in {"SLedgehammer-dev12/Programlar", "SLedgehammer-dev12/gas-flow-calc-v6-1"}:
+            if config.get("repo") != DEFAULT_CONFIG["repo"]:
+                config["repo"] = DEFAULT_CONFIG["repo"]
+                migrated = True
+
+        if config.get("repo") == DEFAULT_CONFIG["repo"] and config.get("update_mode") == "branch":
             config["update_mode"] = DEFAULT_CONFIG["update_mode"]
             config["asset_name_regex"] = DEFAULT_CONFIG["asset_name_regex"]
+            config["branch"] = DEFAULT_CONFIG["branch"]
+            config["version_source_path"] = DEFAULT_CONFIG["version_source_path"]
+            migrated = True
+
+        if config.get("repo") == DEFAULT_CONFIG["repo"] and config.get("asset_name_regex") != DEFAULT_CONFIG["asset_name_regex"]:
+            config["asset_name_regex"] = DEFAULT_CONFIG["asset_name_regex"]
+            migrated = True
+
+        if migrated:
+            save_config(config)
+
         return config
     except Exception as e:
         if log:
@@ -74,6 +88,28 @@ class Updater:
         if self.github_token:
             headers["Authorization"] = f"Bearer {self.github_token}"
         return headers
+
+    def _default_download_path(self, file_name: str):
+        tmp_dir = os.path.join(tempfile.gettempdir(), "gas_flow_calc_updates")
+        os.makedirs(tmp_dir, exist_ok=True)
+        return os.path.join(tmp_dir, file_name)
+
+    def _get_selected_release_asset(self, assets):
+        pattern = re.compile(self.asset_name_regex, re.IGNORECASE)
+        matching_assets = [asset for asset in assets if pattern.search(asset.get("name", ""))]
+        candidates = matching_assets or assets
+        if not candidates:
+            return None
+
+        def sort_key(asset):
+            name = asset.get("name", "").lower()
+            if name.endswith(".exe"):
+                return (0, name)
+            if name.endswith(".zip"):
+                return (1, name)
+            return (2, name)
+
+        return sorted(candidates, key=sort_key)[0]
 
     def check_for_update(self, current_version: str):
         if not self.repo:
@@ -128,61 +164,48 @@ class Updater:
             "assets": data.get("assets", []),
         }
 
-    def download_latest_asset(self):
+    def get_latest_asset_info(self):
         if not self.repo:
             raise RuntimeError("GitHub repo yapilandirilmadi.")
 
         if self.update_mode == "branch":
-            download_url = GITHUB_BRANCH_ZIP.format(repo=self.repo, branch=self.branch)
-            filename = f"{self.repo.split('/')[-1]}-{self.branch}.zip"
-            self.log(f"Branch arsivi indiriliyor: {download_url}")
-            try:
-                req = Request(download_url, headers=self._headers())
-                with urlopen(req, timeout=60) as resp:
-                    data = resp.read()
-            except Exception as e:
-                raise RuntimeError(f"Indirme basarisiz: {e}") from e
-
-            tmp_dir = os.path.join(tempfile.gettempdir(), "gas_flow_calc_updates")
-            os.makedirs(tmp_dir, exist_ok=True)
-            file_path = os.path.join(tmp_dir, filename)
-            with open(file_path, "wb") as f:
-                f.write(data)
-            self.log(f"Indirme tamamlandi: {file_path}")
-            return file_path
+            return {
+                "name": f"{self.repo.split('/')[-1]}-{self.branch}.zip",
+                "browser_download_url": GITHUB_BRANCH_ZIP.format(repo=self.repo, branch=self.branch),
+            }
 
         info = self.check_for_update(current_version="0.0.0")
         if not info:
             return None
 
-        assets = info.get("assets", [])
-        pattern = re.compile(self.asset_name_regex, re.IGNORECASE)
-        chosen = None
-        for asset in assets:
-            name = asset.get("name", "")
-            if pattern.search(name):
-                chosen = asset
-                break
-        if not chosen and assets:
-            chosen = assets[0]
+        chosen = self._get_selected_release_asset(info.get("assets", []))
         if not chosen:
             return None
+        return chosen
 
-        browser_download_url = chosen.get("browser_download_url")
+    def download_latest_asset(self, destination_path=None):
+        if not self.repo:
+            raise RuntimeError("GitHub repo yapilandirilmadi.")
+
+        asset_info = self.get_latest_asset_info()
+        if not asset_info:
+            return None
+
+        file_name = asset_info.get("name") or "update.bin"
+        browser_download_url = asset_info.get("browser_download_url")
         if not browser_download_url:
             return None
 
-        self.log(f"Indirme basliyor: {chosen.get('name')}")
+        self.log(f"Indirme basliyor: {file_name}")
         try:
             req = Request(browser_download_url, headers=self._headers())
-            with urlopen(req, timeout=30) as resp:
+            with urlopen(req, timeout=60) as resp:
                 data = resp.read()
         except Exception as e:
             raise RuntimeError(f"Indirme basarisiz: {e}") from e
 
-        tmp_dir = os.path.join(tempfile.gettempdir(), "gas_flow_calc_updates")
-        os.makedirs(tmp_dir, exist_ok=True)
-        file_path = os.path.join(tmp_dir, chosen.get("name"))
+        file_path = destination_path or self._default_download_path(file_name)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "wb") as f:
             f.write(data)
         self.log(f"Indirme tamamlandi: {file_path}")
