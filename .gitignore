@@ -20,6 +20,7 @@ build/
 dist/
 build_py313/
 dist_py313/
+build_release/
 *.exe
 
 # OS

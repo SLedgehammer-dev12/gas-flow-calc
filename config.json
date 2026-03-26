@@ -1,7 +1,8 @@
 {
   "repo": "SLedgehammer-dev12/gas-flow-calc-v6-1",
+  "private_repo": true,
   "update_mode": "releases",
-  "branch": "gas-flow-calc-v5",
+  "branch": "main",
   "version_source_path": "",
   "version_regex": "APP_VERSION\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)\"",
   "app_subdir_in_zip": "",

@@ -1,4 +1,4 @@
-APP_VERSION = "6.1.2"
+APP_VERSION = "6.1.3"
 
 
 RELEASE_NOTES = {
@@ -39,6 +39,18 @@ RELEASE_NOTES = {
 - The in-app update flow now handles .exe and .zip downloads separately.
 - Release notes for each version are now stored in a centralized metadata structure.
 - Version numbering was refactored to be managed from a single source of truth.""",
+    },
+    "6.1.3": {
+        "tr": """6.1.3 ile gelen başlıca yenilikler:
+
+- Release derlemeleri artik program klasoru icindeki Releases klasorunde uretiliyor.
+- Private GitHub repo kullanildiginda 404 hatasi daha acik bir mesaja donusturuldu.
+- Private repo icin gerekirse GitHub token yerel ayarlara sorularak kaydedilebiliyor.""",
+        "en": """Highlights introduced in 6.1.3:
+
+- Release builds are now generated inside the Releases folder within the program directory.
+- The 404 case for private GitHub repositories now produces a clearer message.
+- For private repos, the app can now ask for a GitHub token and store it in local user settings.""",
     },
 }
 

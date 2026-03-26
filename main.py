@@ -1,6 +1,6 @@
 import tkinter as tk
 import json
-from tkinter import ttk, messagebox, filedialog, Menu
+from tkinter import ttk, messagebox, filedialog, Menu, simpledialog
 from tkinter.scrolledtext import ScrolledText
 import threading
 import queue
@@ -1693,9 +1693,36 @@ class GasFlowCalculatorApp:
         except Exception:
             webbrowser.open(folder_path)
 
+    def _ensure_github_token_for_updates(self):
+        if not getattr(self.updater, "private_repo", False):
+            return True
+        if self.updater.github_token:
+            return True
+
+        if not messagebox.askyesno(t("dialog_update"), t("update_token_required")):
+            return False
+
+        token = simpledialog.askstring(
+            t("dialog_update"),
+            t("update_token_prompt"),
+            parent=self.root,
+            show="*",
+        )
+        if not token:
+            return False
+
+        cfg = load_app_config()
+        cfg["github_token"] = token.strip()
+        save_app_config(cfg)
+        self.updater = Updater(self.log_message)
+        return bool(self.updater.github_token)
+
     # --- Güncelleme İşlevleri ---
     def silent_update_check(self):
         try:
+            if getattr(self.updater, "private_repo", False) and not self.updater.github_token:
+                self.log_message(t("update_private_repo_skip"), level="INFO")
+                return
             update_info = self.updater.check_for_update(current_version=APP_VERSION)
             if update_info and update_info.get("has_update"):
                 self.log_message(f"{t('update_new_version')}: {update_info['latest_version']}")
@@ -1704,6 +1731,8 @@ class GasFlowCalculatorApp:
 
     def check_updates(self):
         try:
+            if not self._ensure_github_token_for_updates():
+                return
             self.log_message(t("update_checking"))
             info = self.updater.check_for_update(current_version=APP_VERSION)
             if not info:
@@ -1726,6 +1755,8 @@ class GasFlowCalculatorApp:
 
     def download_latest_release(self):
         try:
+            if not self._ensure_github_token_for_updates():
+                return
             asset_info = self.updater.get_latest_asset_info()
             if not asset_info:
                 messagebox.showinfo(t("dialog_info"), t("update_no_asset"))

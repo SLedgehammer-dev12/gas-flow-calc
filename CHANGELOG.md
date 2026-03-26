@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.1.3
+
+- Added a dedicated `Releases` folder for local packaged `.exe` outputs.
+- Improved the private GitHub repo 404 message so the cause is clearer.
+- Clarified the local-token-based update path for private repository usage.
+
 ## 6.1.2
 
 - Added a save-location prompt before downloading update files.

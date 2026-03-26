@@ -44,7 +44,7 @@ def load_config(defaults=None):
         seen.add(normalized)
 
         try:
-            with open(candidate, "r", encoding="utf-8") as f:
+            with open(candidate, "r", encoding="utf-8-sig") as f:
                 loaded = json.load(f)
         except Exception:
             continue

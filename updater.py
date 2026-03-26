@@ -18,6 +18,7 @@ GITHUB_RAW_FILE = "https://raw.githubusercontent.com/{repo}/{branch}/{path}"
 
 DEFAULT_CONFIG = {
     "repo": "SLedgehammer-dev12/gas-flow-calc-v6-1",
+    "private_repo": True,
     "asset_name_regex": r"(gas[\s._-]*flow[\s._-]*calc).*\.(exe|zip)$",
     "update_mode": "releases",
     "branch": "main",
@@ -73,6 +74,7 @@ class Updater:
         self.config = _load_config(self.log)
         self.repo = self.config.get("repo", "")
         self.asset_name_regex = self.config.get("asset_name_regex", r"\.zip$")
+        self.private_repo = bool(self.config.get("private_repo", False))
         self.update_mode = self.config.get("update_mode", "releases")
         self.branch = self.config.get("branch", "main")
         self.version_source_path = self.config.get("version_source_path", "")
@@ -88,6 +90,21 @@ class Updater:
         if self.github_token:
             headers["Authorization"] = f"Bearer {self.github_token}"
         return headers
+
+    def _format_request_error(self, error):
+        if isinstance(error, HTTPError):
+            if error.code == 404 and not self.github_token:
+                return (
+                    "GitHub release bilgisine erisilemedi. "
+                    "Repo private oldugu icin local config icinde 'github_token' tanimlanmali."
+                )
+            if error.code == 404:
+                return "GitHub release veya asset bulunamadi (HTTP 404)."
+            if error.code == 401:
+                return "GitHub token gecersiz veya yetkisiz (HTTP 401)."
+            if error.code == 403:
+                return "GitHub erisimi reddedildi veya rate limit asildi (HTTP 403)."
+        return str(error)
 
     def _default_download_path(self, file_name: str):
         tmp_dir = os.path.join(tempfile.gettempdir(), "gas_flow_calc_updates")
@@ -148,7 +165,7 @@ class Updater:
             with urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
         except (URLError, HTTPError) as e:
-            self.log(f"GitHub API erisim hatasi: {e}", level="ERROR")
+            self.log(f"GitHub API erisim hatasi: {self._format_request_error(e)}", level="ERROR")
             return None
         except Exception as e:
             self.log(f"Bilinmeyen hata: {e}", level="ERROR")
@@ -201,6 +218,8 @@ class Updater:
             req = Request(browser_download_url, headers=self._headers())
             with urlopen(req, timeout=60) as resp:
                 data = resp.read()
+        except (URLError, HTTPError) as e:
+            raise RuntimeError(f"Indirme basarisiz: {self._format_request_error(e)}") from e
         except Exception as e:
             raise RuntimeError(f"Indirme basarisiz: {e}") from e
 
