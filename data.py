@@ -3,19 +3,49 @@
 
 # Termodinamik Gaz Listesi (CoolProp İsimleri)
 COOLPROP_GASES = {
-    "METHANE": "Methane (CH₄)", "ETHANE": "Ethane (C₂H₆)", "PROPANE": "Propane (C₃H₈)", 
-    "ISOBUTANE": "Isobutane (i-C₄H₁₀)", "BUTANE": "n-Butane (n-C₄H₁₀)", "ISOPENTANE": "Isopentane (i-C₅H₁₂)", 
-    "PENTANE": "n-Pentane (n-C₅H₁₂)", "HEXANE": "n-Hexane (C₆H₁₄)", "HEPTANE": "n-Heptane (C₇H₁₆)", 
-    "OCTANE": "n-Octane (C₈H₁₈)", "NITROGEN": "Nitrogen (N₂)", "OXYGEN": "Oxygen (O₂)", 
-    "CARBONDIOXIDE": "Carbon Dioxide (CO₂)", "WATER": "Water (H₂O)", "HYDROGENSULFIDE": "Hydrogen Sulfide (H₂S)", 
-    "HELIUM": "Helium (He)", "AIR": "Air", "ARGON": "Argon (Ar)", "KRYPTON": "Krypton (Kr)", "XENON": "Xenon (Xe)"
+    "METHANE": {"id": "Methane", "name": "Methane (CH₄)"},
+    "ETHANE": {"id": "Ethane", "name": "Ethane (C₂H₆)"},
+    "PROPANE": {"id": "Propane", "name": "Propane (C₃H₈)"}, 
+    "ISOBUTANE": {"id": "IsoButane", "name": "Isobutane (i-C₄H₁₀)"},
+    "BUTANE": {"id": "n-Butane", "name": "n-Butane (n-C₄H₁₀)"},
+    "ISOPENTANE": {"id": "Isopentane", "name": "Isopentane (i-C₅H₁₂)"}, 
+    "PENTANE": {"id": "n-Pentane", "name": "n-Pentane (n-C₅H₁₂)"},
+    "HEXANE": {"id": "n-Hexane", "name": "n-Hexane (C₆H₁₄)"},
+    "HEPTANE": {"id": "n-Heptane", "name": "n-Heptane (C₇H₁₆)"}, 
+    "OCTANE": {"id": "n-Octane", "name": "n-Octane (C₈H₁₈)"},
+    "NITROGEN": {"id": "Nitrogen", "name": "Nitrogen (N₂)"},
+    "OXYGEN": {"id": "Oxygen", "name": "Oxygen (O₂)"}, 
+    "CARBONDIOXIDE": {"id": "CarbonDioxide", "name": "Carbon Dioxide (CO₂)"},
+    "WATER": {"id": "Water", "name": "Water (H₂O)"},
+    "HYDROGENSULFIDE": {"id": "HydrogenSulfide", "name": "Hydrogen Sulfide (H₂S)"}, 
+    "HELIUM": {"id": "Helium", "name": "Helium (He)"},
+    "AIR": {"id": "Air", "name": "Air"},
+    "ARGON": {"id": "Argon", "name": "Argon (Ar)"},
+    "KRYPTON": {"id": "Krypton", "name": "Krypton (Kr)"},
+    "XENON": {"id": "Xenon", "name": "Xenon (Xe)"}
+}
+
+# Hazır Gaz Karışım Presetleri (CoolProp isimleri -> yüzde)
+GAS_PRESETS = {
+    "Typical NG": {
+        "METHANE": 90.0, "ETHANE": 5.0, "PROPANE": 2.0,
+        "CARBONDIOXIDE": 2.0, "NITROGEN": 1.0
+    },
+    "Dry Gas": {
+        "METHANE": 95.0, "ETHANE": 3.0, "NITROGEN": 2.0
+    },
+    "Rich Gas": {
+        "METHANE": 80.0, "ETHANE": 10.0, "PROPANE": 5.0,
+        "BUTANE": 3.0, "CARBONDIOXIDE": 2.0
+    },
 }
 
 # Boru Malzemeleri ve SMYS (MPa)
 PIPE_MATERIALS = {
     "API 5L Grade B": 241, "API 5L X42": 290, "API 5L X52": 359, "API 5L X60": 414, 
     "API 5L X65": 448, "API 5L X70": 483, "ASTM A53 Grade B": 241, "ASTM A106 Grade B": 241,
-    "ASTM A312 TP316L": 210, "ASTM A335 P11": 205
+    "ASTM A312 TP316L": 210, "ASTM A335 P11": 205,
+    "Manuel / Custom": 0
 }
 
 # Boru Pürüzlülük Değerleri (mm -> metreye çevrilirken dikkat edilmeli, buradaki değerler metre cinsinden)
@@ -23,7 +53,8 @@ PIPE_MATERIALS = {
 PIPE_ROUGHNESS = {
     "API 5L Grade B": 0.0457e-3, "API 5L X42": 0.0457e-3, "API 5L X52": 0.0457e-3, "API 5L X60": 0.0457e-3,
     "API 5L X65": 0.0457e-3, "API 5L X70": 0.0457e-3, "ASTM A53 Grade B": 0.0457e-3, "ASTM A106 Grade B": 0.0457e-3,
-    "ASTM A312 TP316L": 0.0015e-3, "ASTM A335 P11": 0.0457e-3
+    "ASTM A312 TP316L": 0.0015e-3, "ASTM A335 P11": 0.0457e-3,
+    "Manuel / Custom": 0.0457e-3
 }
 
 # Fitting K Faktörleri

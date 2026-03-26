@@ -7,7 +7,7 @@ _current_lang = "tr"
 TRANSLATIONS = {
     "tr": {
         # App Title
-        "app_title": "Doğal Gaz Hesaplayıcı V5 (Modüler & Ergonomik)",
+        "app_title": "Doğal Gaz Hesaplayıcı V6.1",
         
         # Menu - File
         "menu_file": "Dosya",
@@ -37,6 +37,8 @@ TRANSLATIONS = {
         "section_pipe_properties": "3. Boru ve Hat Özellikleri",
         "section_design_criteria": "Tasarım Kriterleri (Min. Çap Hesabı)",
         "section_fittings": "Boru Elemanları (Adet)",
+        "toggle_fittings_show": "▶ Boru Elemanlarını Göster",
+        "toggle_fittings_hide": "▼ Boru Elemanlarını Gizle",
         
         # Gas Section
         "gas_search": "Gaz Ara:",
@@ -45,6 +47,8 @@ TRANSLATIONS = {
         "composition_type": "Bileşim Türü:",
         "mol_percent": "Mol %",
         "mass_percent": "Kütle %",
+        "gas_preset": "Hazır Karışım:",
+        "gas_preset_select": "-- Seçiniz --",
         
         # Process Section
         "inlet_pressure": "Giriş Basıncı:",
@@ -68,12 +72,19 @@ TRANSLATIONS = {
         "length": "Uzunluk (m):",
         "outer_diameter": "Dış Çap (mm):",
         "wall_thickness": "Et Kalınlığı (mm):",
+        "nps": "NPS:",
+        "schedule": "Schedule:",
+        "smys": "SMYS (MPa):",
+        "manual_custom": "Manuel / Custom",
         "target_outlet_pressure": "Hedef Çıkış Basıncı:",
         "max_velocity": "Maks. Hız (m/s):",
         "design_pressure": "Tasarım Basıncı:",
-        "factor_f": "Faktör F:",
-        "factor_e": "Faktör E:",
-        "factor_t": "Faktör T:",
+        "factor_f": "Tasarım Faktörü (F):",
+        "factor_e": "Boyuna Bağlantı Faktörü (E):",
+        "factor_t": "Sıcaklık Derating Faktörü (T):",
+        "unit_weight": "Birim Ağırlık (API 5L):",
+        "opt_lowest_weight": "En Düşük Ağırlığa Göre Optimize Et",
+        "fast_calc": "Hızlı Hesaplama (Büyükleri Atlama)",
         
         # Results Section
         "results_summary": "Özet Tablo",
@@ -151,7 +162,9 @@ TRANSLATIONS = {
         "validation_positive_flow": "Akış miktarı pozitif olmalıdır.",
         "validation_add_gas": "En az bir gaz bileşeni eklemelisiniz.",
         "validation_positive_length": "Uzunluk pozitif olmalıdır.",
-        "validation_positive_diameter": "Çap pozitif olmalıdır.",
+        "validation_positive_diameter": "Dış çap sıfır veya negatif olamaz.",
+        "validation_positive_thickness": "Et kalınlığı sıfır veya negatif olamaz.",
+        "validation_invalid_geometry": "Geçersiz boru çapı/kalınlığı. İç çap sıfır veya negatif olamaz.",
         
         # Gas Composition
         "gas_composition_warning": "Gaz bileşimi toplamı",
@@ -181,8 +194,8 @@ TRANSLATIONS = {
         "dialog_confirm": "Onay",
         
         # Tooltips
-        "tooltip_factor_f": "Dizayn Faktörü (F)\nASME B31.8'e göre:\n0.72 (Class 1)\n0.60 (Class 2)\n0.50 (Class 3)\n0.40 (Class 4)",
-        "tooltip_factor_e": "Boyuna Ek Yeri Faktörü (E)\n1.00 (Dikişsiz/ERW)\n0.80 (Spiral Kaynaklı bazı tipler)",
+        "tooltip_factor_f": "Genellikle 0.72 (Sınıf 1 için)",
+        "tooltip_factor_e": "Genellikle 1.0 (Dikişsiz veya ERW)",
         "tooltip_factor_t": "Sıcaklık Derating Faktörü (T)\n1.00 (<= 121°C)\n0.967 (135°C)\n0.933 (149°C)",
         
         # Language Change
@@ -207,6 +220,13 @@ TRANSLATIONS = {
         "result_parameter": "Parametre",
         "result_value": "Değer",
         "result_unit": "Birim",
+        "results_profile_data": "Akış Profili",
+        "results_charts": "Grafikler",
+        "export_csv": "CSV'ye Aktar",
+        "col_distance": "Mesafe (m)",
+        "col_pressure": "Basınç (Pa)",
+        "col_velocity": "Hız (m/s)",
+        "warning_choked": "DİKKAT: Akış boğulma noktasına çok yakın veya sonik hızı aşmak üzere (Mach > 0.8)! Çapı artırmayı değerlendirin.",
         
         # Project
         "project_saved": "Proje kaydedildi.",
@@ -229,6 +249,40 @@ TRANSLATIONS = {
         "about_title": "Hakkında",
         "about_description": "Gaz akış, basınç kaybı ve boru mukavemet hesaplamalarını mühendislik standartlarına göre yapan hesaplama aracı.",
         
+        # Changelog Dialog
+        "changelog_title": "Güncelleme Notları (Versiyon 6.1)",
+        "changelog_content": """YENİ VE ÖNE ÇIKAN ÖZELLİKLER (V6.1 Güncellemeleri)
+=================================================
+
+Versiyon 6.1 Dev Güncellemesi:
+------------------------------
+1. 🎨 Tamamen Yenilenmiş Modern Arayüz (UI/UX):
+- Koyu lacivert vurgulu, "Card" tasarımlı yeni şık renk paleti.
+- Yeni "Segmentli Butonlar" ile hızlı Hesaplama Hedefi seçimi.
+- Gaz karışımı için renk geçişli % doluluk çubuğu eklendi.
+- Footer (alt çubuk) kısmına canlı durum ve hesaplama süresi göstergesi eklendi.
+
+2. 🚀 Çekirdek Performans Optimizasyonları (100x Hız Artışı):
+- Standard Density ve Thermodinamik Propertiyler için LRU-style önbellekleme (Cache) sistemi.
+- Min. Çap seçimlerinde anlamsız simülasyonları atlayan "Analitik Hız Ön-Filtresi".
+- Alternatif boru senaryoları aynı anda hesaplanarak (Threaded Parallel) bekleme süresi ortadan kaldırıldı.
+
+3. 📉 Gelişmiş Sonuç Sekmeleri ve Grafikler:
+- P-v ve T-s grafikleri artık ayrı pencerede değil, doğrudan sonuç paneline gömülü.
+- Yeni "Profil Verisi" sekmesi ile segment-segment boru içi analiz detayları tablosu.
+- Sonuçları kolayca Excel'e aktarabilmek için "CSV İndir" butonu.
+
+4. 📐 Etkileşimli 3B Sistem Şeması:
+- Şematik çizim sekmesi 3B boru efekti, renkli ΔP çubuğu ve Hız limito barları ile tamamen yeniden kodlandı.
+
+Önceki 6.1 Özellikleri (Ağırlık Optimizasyonu):
+----------------------------------------------
+- Minimum Çap hesabında "Alternatif Senaryolar" menüsü ile en düşük ağırlığı ve fiyatı olan boru önerilir.
+- "Hızlı Hesaplama" simülasyonları kısaltan bir mod eklendi.""",
+        "dont_show_again": "Bir daha gösterme",
+        
+        # Project
+
         # User Guide
         "guide_title": "Kullanım Kılavuzu",
         "guide_content": """KULLANIM KILAVUZU
@@ -339,7 +393,7 @@ REFERANSLAR:
     
     "en": {
         # App Title
-        "app_title": "Natural Gas Calculator V5 (Modular & Ergonomic)",
+        "app_title": "Natural Gas Calculator V6.1",
         
         # Menu - File
         "menu_file": "File",
@@ -369,6 +423,8 @@ REFERANSLAR:
         "section_pipe_properties": "3. Pipe and Line Properties",
         "section_design_criteria": "Design Criteria (Min. Diameter Calc.)",
         "section_fittings": "Pipe Fittings (Count)",
+        "toggle_fittings_show": "▶ Show Pipe Fittings",
+        "toggle_fittings_hide": "▼ Hide Pipe Fittings",
         
         # Gas Section
         "gas_search": "Search Gas:",
@@ -377,6 +433,8 @@ REFERANSLAR:
         "composition_type": "Composition Type:",
         "mol_percent": "Mol %",
         "mass_percent": "Mass %",
+        "gas_preset": "Preset:",
+        "gas_preset_select": "-- Select --",
         
         # Process Section
         "inlet_pressure": "Inlet Pressure:",
@@ -400,20 +458,20 @@ REFERANSLAR:
         "length": "Length (m):",
         "outer_diameter": "Outer Diameter (mm):",
         "wall_thickness": "Wall Thickness (mm):",
+        "nps": "NPS:",
+        "schedule": "Schedule:",
+        "smys": "SMYS (MPa):",
+        "manual_custom": "Manuel / Custom",
         "target_outlet_pressure": "Target Outlet Pressure:",
         "max_velocity": "Max. Velocity (m/s):",
         "design_pressure": "Design Pressure:",
-        "factor_f": "Factor F:",
-        "factor_e": "Factor E:",
-        "factor_t": "Factor T:",
-        
-        # Results Section
-        "results_summary": "Summary Table",
-        "results_schematic": "System Schematic",
-        "results_report": "Detailed Report",
-        
-        # Buttons
-        "btn_calculate": "CALCULATE",
+        "factor_f": "Design Factor (F):",
+        "factor_e": "Longit. Joint Factor (E):",
+        "factor_t": "Temp. Derating Factor (T):",
+        "unit_weight": "Unit Weight (API 5L):",
+        "tooltip_factor_f": "Usually 0.72 (Class 1)",
+        "tooltip_factor_e": "Usually 1.0 (Seamless or ERW)",
+        "tooltip_factor_t": "Temp. Derating Factor (T)\n1.00 (<= 121°C)\n0.967 (135°C)\n0.933 (149°C)",
         "btn_show_graphs": "Graphs",
         "btn_save_report": "Save Report",
         
@@ -483,7 +541,9 @@ REFERANSLAR:
         "validation_positive_flow": "Flow rate must be positive.",
         "validation_add_gas": "You must add at least one gas component.",
         "validation_positive_length": "Length must be positive.",
-        "validation_positive_diameter": "Diameter must be positive.",
+        "validation_positive_diameter": "Outer diameter cannot be zero or negative.",
+        "validation_positive_thickness": "Wall thickness cannot be zero or negative.",
+        "validation_invalid_geometry": "Invalid pipe geometry. Inner diameter cannot be zero or negative.",
         
         # Gas Composition
         "gas_composition_warning": "Gas composition total is",
@@ -539,6 +599,13 @@ REFERANSLAR:
         "result_parameter": "Parameter",
         "result_value": "Value",
         "result_unit": "Unit",
+        "results_profile_data": "Profile Data",
+        "results_charts": "Charts",
+        "export_csv": "Export to CSV",
+        "col_distance": "Distance (m)",
+        "col_pressure": "Pressure (Pa)",
+        "col_velocity": "Velocity (m/s)",
+        "warning_choked": "WARNING: Flow is very close to or exceeding sonic velocity (Mach > 0.8)! Consider increasing pipe diameter.",
         
         # Project
         "project_saved": "Project saved.",
@@ -560,6 +627,18 @@ REFERANSLAR:
         # About Dialog
         "about_title": "About",
         "about_description": "A calculation tool for gas flow, pressure drop and pipe strength analysis according to engineering standards.",
+
+        # Changelog Dialog
+        "changelog_title": "Update Notes (Version 6.1)",
+        "changelog_content": """Version 5.0 Core Features:
+--------------------------
+1. New Thermodynamic Models: Peng-Robinson, SRK and Kay's Rule.
+2. Full support for NCM, SCM, and ACM volumetric flow rates.
+3. English and Turkish multi-language support.
+4. Canvas-based Schematic Viewer and P-v / T-s diagrams.
+- Minimum Diameter calculation now suggests the lowest weight (cheapest) pipe under "Alternative Scenarios".
+- "Fast Calculation" mode added to drastically shorten full simulation loops.""",
+        "dont_show_again": "Do not show again",
         
         # User Guide
         "guide_title": "User Guide",

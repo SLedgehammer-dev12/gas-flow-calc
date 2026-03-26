@@ -15,6 +15,13 @@ dene.json
 *_backup_*/
 _backups/
 
+# Build outputs
+build/
+dist/
+build_py313/
+dist_py313/
+*.exe
+
 # OS
 .DS_Store
 Thumbs.db

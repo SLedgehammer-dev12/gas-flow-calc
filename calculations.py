@@ -1,6 +1,8 @@
 
 import math
 import numpy as np
+from functools import lru_cache
+from concurrent.futures import ThreadPoolExecutor
 import CoolProp.CoolProp as CP
 from data import COOLPROP_GASES, PIPE_MATERIALS, PIPE_ROUGHNESS, FITTING_K_FACTORS, ASME_B36_10M_DATA
 
@@ -11,6 +13,10 @@ MIN_PRESSURE_PA = 1000.0 # Mutlak minimum basınç (1000 Pa)
 class GasFlowCalculator:
     def __init__(self):
         self.log_callback = None
+        # Standart yoğunluk cache’i: (gaz_taple, kütüp) -> kg/m3
+        self._std_density_cache = {}
+        # Termodinamik özellik cache’i: (P, T, gaz_tuple, kutuphane) -> props_dict
+        self._thermo_cache = {}
 
     def set_log_callback(self, callback):
         """Log mesajlarını dışarıya (örn. GUI) iletmek için callback fonksiyonu."""
@@ -19,6 +25,11 @@ class GasFlowCalculator:
     def log(self, message, level="INFO"):
         if self.log_callback:
             self.log_callback(message, level)
+
+    def clear_thermo_cache(self):
+        """Her yeni hesaplama başlangıcında cache'i temizle."""
+        self._thermo_cache.clear()
+        self._std_density_cache.clear()
 
     # --- YARDIMCI FONKSİYONLAR ---
     def validate_inputs(self, inputs):
@@ -103,20 +114,28 @@ class GasFlowCalculator:
         standard_density = (101325 * MW_mix * 1e-3) / (1.0 * R_J_mol_K * 288.15) 
         viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04) # Basit tahmin
 
-        Cp_mix, k_mix = 0, 0
+        Cp_mix, Cv_mix = 0, 0
         for gas, y in mole_fractions.items():
             try:
-                Cp_mix += y * CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / 1000 
-                k_mix += y * CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / CP.PropsSI('CV0MASS', 'T', T, 'P', 101325, gas)
-            except:
-                Cp_mix += y * 2.0; k_mix += y * 1.25
-        k_avg = k_mix / len(mole_fractions) if len(mole_fractions) > 0 else 1.25
+                cp_i = CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
+                cv_i = CP.PropsSI('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
+                Cp_mix += y * cp_i
+                Cv_mix += y * cv_i
+            except Exception:
+                Cp_mix += y * 2.0; Cv_mix += y * 1.6
+        if Cv_mix == 0: Cv_mix = 1.0
+        k_avg = Cp_mix / Cv_mix
         Cv_mix = Cp_mix / k_avg
 
+        # Sonic Velocity Check (Ideal Gas Approx with Z)
+        gamma = k_avg if k_avg > 0 else 1.3
+        sonic_velocity = math.sqrt(gamma * Z * R_J_mol_K * T / (MW_mix * 1e-3))
+        
         return {
             "MW": MW_mix, "Cp": Cp_mix, "Cv": Cv_mix, "Z": Z, "density": density,
             "viscosity": viscosity, "standard_density": standard_density,
-            "EOS_model": EOS_type
+            "EOS_model": EOS_type,
+            "sonic_velocity": sonic_velocity
         }
 
     def create_coolprop_state(self, mole_fractions):
@@ -140,12 +159,7 @@ class GasFlowCalculator:
             
             clean_fluids = []
             for f in fluids:
-                # "Methane (CH4)" -> "Methane"
-                # "Nitrogen (N2)" -> "Nitrogen"
-                # "Air" -> "Air"
-                # Use the value from COOLPROP_GASES but strip the formula
-                full_name = COOLPROP_GASES[f]
-                clean_name = full_name.split(' (')[0].replace(" ", "")
+                clean_name = COOLPROP_GASES[f]["id"]
                 clean_fluids.append(clean_name)
                 
             state = CP.AbstractState(backend, "&".join(clean_fluids))
@@ -155,11 +169,28 @@ class GasFlowCalculator:
             self.log(f"CoolProp State Oluşturma Hatası: {e}", "ERROR")
             return None
 
+    def _get_std_density(self, mixture):
+        """Standart yoğunluğu cache’den al veya hesapla.
+        101325 Pa, 288.15 K değişmediğinden her hesaplama için 1 kere yeterli."""
+        if mixture not in self._std_density_cache:
+            try:
+                d = CP.PropsSI('D', 'P', 101325, 'T', 288.15, mixture)
+            except Exception:
+                d = 0.0
+            self._std_density_cache[mixture] = d
+        return self._std_density_cache[mixture]
+
     def calculate_coolprop_properties(self, P, T, mixture, state=None):
-        # self.log("Hesaplama: CoolProp (Helmholtz EOS) kullanılıyor.", "DEBUG") # Çok log üretir
+        # Termodinamik özellik cache’i: aynı (P, T, mixture) üçlüsü için tekrar hesaplama
+        cache_key = (round(P, 1), round(T, 4), mixture)
+        if cache_key in self._thermo_cache:
+            return self._thermo_cache[cache_key]
+        
         standard_P = 101325; standard_T = 288.15
         viscosity_fallback = False
-        
+
+        # —— Standart yoğunluk: cache’den ——
+        standard_density = self._get_std_density(mixture)
         if state:
             try:
                 state.update(CP.PT_INPUTS, P, T)
@@ -170,28 +201,19 @@ class GasFlowCalculator:
                 Cv = state.cvmass() / 1000
                 Z = state.compressibility_factor()
                 
-                # Standard Density (Bunu her seferinde hesaplamaya gerek yok aslında ama hızlıdır)
-                # State'i değiştirmemek için ayrı hesaplamak lazım veya state'i geri yüklemek lazım.
-                # AbstractState tek bir noktayı temsil eder.
-                # Standart yoğunluk sabit olduğu için bunu dışarıda bir kere hesaplayıp cache'lemek en iyisi.
-                # Şimdilik PropsSI ile devam edelim standart yoğunluk için (sadece 1 kere çağrılırsa sorun değil)
-                # Ama döngü içinde çağrılıyorsa sorun.
-                # calculate_pressure_drop içinde m_dot hesabı için 1 kere çağrılıyor.
-                # Loop içinde calculate_thermo_properties çağrıldığında standart density lazım mı?
-                # Return dict'te var.
-                # Loop içinde sadece rho ve mu lazım.
+                # Standart yoğunluk artık cache’den geliyor (yukarıda hesaplanıyor)
                 
-                # Hızlandırma: Standart yoğunluğu hesaplama (Loop içindeyse)
-                standard_density = 0 # Placeholder if optimizing
+                # Sonic Velocity
+                try: 
+                    sonic_velocity = state.speed_sound()
+                except Exception:
+                    sonic_velocity = 340.0 # Air typical
                 
             except Exception as e:
                  # Fallback to PropsSI if AbstractState fails
                  return self.calculate_coolprop_properties(P, T, mixture, state=None)
         else:
-            try:
-                standard_density = CP.PropsSI('D', 'P', standard_P, 'T', standard_T, mixture)
-            except Exception as e:
-                raise ValueError(f"CoolProp Standart Yoğunluk Hatası: {str(e)}")
+            # AbstractState yok, doğrudan PropsSI — standart yoğunluk cache’den zaten geldi
             
             MW_mix = CP.PropsSI('M', 'P', P, 'T', T, mixture) * 1000
 
@@ -205,13 +227,21 @@ class GasFlowCalculator:
             Cv = CP.PropsSI('O', 'P', P, 'T', T, mixture) / 1000
             Z = CP.PropsSI('Z', 'P', P, 'T', T, mixture)
             density = CP.PropsSI('D', 'P', P, 'T', T, mixture)
+            
+            try:
+                sonic_velocity = CP.PropsSI('A', 'P', P, 'T', T, mixture)
+            except Exception:
+                sonic_velocity = 340.0
 
         props = {
             "MW": MW_mix, "Cp": Cp, "Cv": Cv, "Z": Z,
             "density": density,
-            "viscosity": viscosity, "standard_density": standard_density, # Note: standard_density might be 0 if optimized
-            "viscosity_fallback": viscosity_fallback
+            "viscosity": viscosity, "standard_density": standard_density, 
+            "viscosity_fallback": viscosity_fallback,
+            "sonic_velocity": sonic_velocity
         }
+        # Cache'e kaydet (cache_key yukarıda tanımlandı)
+        self._thermo_cache[cache_key] = props
         return props
 
     def calculate_pseudo_critical_properties(self, P, T, mole_fractions):
@@ -222,27 +252,96 @@ class GasFlowCalculator:
             Ppc += y * props['Pc']; Tpc += y * props['Tc']; MW_mix += y * props['MW']
         
         Pr = P / Ppc; Tr = T / Tpc
-        Z = 1.0 + Pr / (14 * Tr) if Pr > 0.1 or Tr < 1.5 else 1.0 
+        # Dranchuk-Abou-Kassem (DAK) Z-Factor Correlation
+        # Iterative Solution
+        # Constants
+        A1 = 0.3265; A2 = -1.0700; A3 = -0.5339; A4 = 0.01569; A5 = -0.05165
+        A6 = 0.5475; A7 = -0.7361; A8 = 0.1844; A9 = 0.1056; A10 = 0.6134; A11 = 0.7210
+        
+        # Initial guess for reduced density rho_r
+        # Hall-Yarborough initial guess
+        t_r = 1.0 / Tr
+        A = 0.06125 * t_r * math.exp(-1.2 * (1 - t_r)**2)
+        if Pr < 0.01: rho_r = 0 # Low pressure limit
+        else: rho_r = 0.27 * Pr / Tr # Ideal gas approximation
+        
+        # Newton-Raphson Iteration
+        for _ in range(20):
+            R1 = A1 + A2/Tr + A3/Tr**3 + A4/Tr**4 + A5/Tr**5
+            R2 = 0.27 * Pr / Tr
+            R3 = A6 + A7/Tr + A8/Tr**2
+            R4 = A9 * (A7/Tr + A8/Tr**2)
+            
+            exp_term = math.exp(-A11 * rho_r**2)
+            
+            f = R1*rho_r - R2/rho_r + R3*rho_r**2 - R4*rho_r**5 + \
+                A10 * (1 + A11*rho_r**2) * (rho_r**2 / Tr**3) * exp_term + 1
+            
+            df = R1 + R2/rho_r**2 + 2*R3*rho_r - 5*R4*rho_r**4 + \
+                 (2*A10*rho_r / Tr**3) * exp_term * (1 + A11*rho_r**2 - A11*rho_r**2*(1 + A11*rho_r**2)) # Derivative approx
+                 # Simplified derivative term:
+            df = R1 + R2/rho_r**2 + 2*R3*rho_r - 5*R4*rho_r**4 + \
+                 (2*A10*rho_r / Tr**3) * exp_term * (1 + A11*rho_r**2 - A11*rho_r**2) # Simplified
+                 
+            # Better implementation of derivative
+            term_exp = A10 * (rho_r**2 / Tr**3) * exp_term * (1 + A11*rho_r**2)
+            d_term_exp = (2*A10*rho_r/Tr**3) * exp_term * (1 + A11*rho_r**2) - \
+                         (2*A10*A11*rho_r**3/Tr**3) * exp_term * (1 + A11*rho_r**2) + \
+                         A10 * (rho_r**2/Tr**3) * exp_term * (2*A11*rho_r)
+            
+            df = R1 + R2/rho_r**2 + 2*R3*rho_r - 5*R4*rho_r**4 + d_term_exp
+            
+            if abs(df) < 1e-6: break
+            rho_r_new = rho_r - f / df
+            if abs(rho_r_new - rho_r) < 1e-6:
+                rho_r = rho_r_new; break
+            rho_r = rho_r_new
+            
+        Z = (0.27 * Pr) / (rho_r * Tr) if rho_r > 0 else 1.0
             
         density = (P * MW_mix * 1e-3) / (Z * R_J_mol_K * T)
         standard_density = (101325 * MW_mix * 1e-3) / (1.0 * R_J_mol_K * 288.15) 
-        viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04)
+        
+        # Lee-Gonzalez-Eakin Viscosity Correlation
+        # API Technical Data Book Procedure 11A4.1
+        # MW: Molecular Weight
+        # T: Temperature (Rankine) -> Convert K to R
+        # rho: Density (g/cc) -> Convert kg/m3 to g/cc
+        
+        T_R = T * 1.8
+        rho_gcc = density / 1000.0
+        
+        X = 3.5 + 986.0 / T_R + 0.01 * MW_mix
+        Y = 2.4 - 0.2 * X
+        K = ( (9.4 + 0.02 * MW_mix) * T_R**1.5 ) / (209 + 19 * MW_mix + T_R)
+        
+        viscosity_micropoise = K * math.exp(X * (rho_gcc**Y))
+        viscosity = viscosity_micropoise * 1e-7 # Convert Micropoise to Pa.s (1 uP = 1e-7 Pa.s)
 
-        Cp_mix, k_mix = 0, 0
+        Cp_mix, Cv_mix = 0, 0
         for gas, y in mole_fractions.items():
             try:
-                Cp_mix += y * CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
-                k_mix += y * CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / CP.PropsSI('CV0MASS', 'T', T, 'P', 101325, gas)
-            except:
-                Cp_mix += y * 2.0; k_mix += y * 1.25 
+                cp_i = CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
+                cv_i = CP.PropsSI('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
+                Cp_mix += y * cp_i
+                Cv_mix += y * cv_i
+            except Exception:
+                Cp_mix += y * 2.0; Cv_mix += y * 1.6 # Tahmini değerler
         
-        k_avg = k_mix / len(mole_fractions) if len(mole_fractions) > 0 else 1.25
-        Cv_mix = Cp_mix / k_avg
+        # k_avg düzeltmesi
+        if Cv_mix == 0: Cv_mix = 1.0
+        k_avg = Cp_mix / Cv_mix
+        
+        # Sonic Velocity Check (Ideal Gas Approx with Z)
+        # c = sqrt(k * Z * R * T / MW)
+        gamma = k_avg
+        sonic_velocity = math.sqrt(gamma * Z * R_J_mol_K * T / (MW_mix * 1e-3))
 
         return {
             "MW": MW_mix, "Cp": Cp_mix, "Cv": Cv_mix, "Z": Z, "density": density,
             "viscosity": viscosity, "standard_density": standard_density,
-            "Ppc": Ppc, "Tpc": Tpc, "Pr": Pr, "Tr": Tr
+            "Ppc": Ppc, "Tpc": Tpc, "Pr": Pr, "Tr": Tr,
+            "sonic_velocity": sonic_velocity
         }
 
     def calculate_thermo_properties(self, P, T, mole_fractions, library_choice, state=None):
@@ -312,6 +411,8 @@ class GasFlowCalculator:
             profile_data["distance"].append(L)
             profile_data["pressure"].append(P_out)
             profile_data["velocity"].append(velocity_out)
+            
+            choked_flow_status = "N/A"
 
         else: # Sıkıştırılabilir (Segmented Integration)
             dL = L / num_segments
@@ -364,8 +465,16 @@ class GasFlowCalculator:
             P_out = P_current
             gas_props_out = self.calculate_thermo_properties(P_out, T, mole_fractions, library_choice, cp_state)
             velocity_out = m_dot / (gas_props_out['density'] * A)
+            sonic_velocity_out = gas_props_out.get('sonic_velocity', 340)
+            
             # Profildeki son hızı güncelle
             profile_data["velocity"][-1] = velocity_out
+            
+            choked_flow_status = "OK"
+            if velocity_out > sonic_velocity_out:
+                choked_flow_status = "CHOKED (Sonik Hız Aşıldı!)"
+            elif velocity_out > 0.8 * sonic_velocity_out:
+                choked_flow_status = "Warning (Mach > 0.8)"
             
             delta_p_total = P_in - P_out
             delta_p_fittings = delta_p_total - total_pipe_loss
@@ -378,7 +487,8 @@ class GasFlowCalculator:
             "Re": Re_final, "f": f_final,
             "gas_props_in": gas_props_in, "gas_props_out": gas_props_out,
             "m_dot": m_dot,
-            "profile_data": profile_data
+            "profile_data": profile_data,
+            "choked_status": choked_flow_status
         }
 
     def calculate_max_length(self, inputs):
@@ -500,7 +610,13 @@ class GasFlowCalculator:
         
         # Tasarım Parametreleri
         P_design = inputs['P_design']; material = inputs['material']
+        SMYS_mpa = inputs.get('SMYS', PIPE_MATERIALS.get(material, 241))
         F = inputs['F']; E = inputs['E']; T_factor = inputs['T_factor']
+
+        # Helper: API 5L Weight Calculation
+        def calculate_pipe_weight_api5l(D_mm, t_mm):
+            # w = t * (D - t) * 0.02466
+            return t_mm * (D_mm - t_mm) * 0.02466
 
         # 1. Başlangıç Tahmini (Giriş Koşulları)
         gas_props_in = self.calculate_thermo_properties(P_in, T, mole_fractions, library_choice)
@@ -521,7 +637,7 @@ class GasFlowCalculator:
 
         # 2. İteratif Seçim ve Karşılaştırma
         # Tüm boruları al (Sıralı değil, gruplanmış lazım)
-        all_pipes_flat = self.get_sorted_pipes(P_design, material, F, E, T_factor) 
+        all_pipes_flat = self.get_sorted_pipes(P_design, SMYS_mpa, F, E, T_factor) 
         # get_sorted_pipes zaten t_required kontrolü yapıyor.
         
         # Gruplama: Nominal Çap -> [Schedule List]
@@ -534,71 +650,145 @@ class GasFlowCalculator:
         # Nominal Çapları Sıralama (Küçükten büyüğe)
         def nd_sort_key(nd_str):
             try:
-                if ' ' in nd_str:
-                    parts = nd_str.split(' ')
-                    val = float(parts[0]) + (eval(parts[1].replace(' ', '+')) if len(parts) > 1 else 0)
-                elif '/' in nd_str: val = eval(nd_str)
-                else: val = float(nd_str.replace('"', ''))
-            except: val = 999
+                s = nd_str.strip().replace('"', '')
+                if ' ' in s: # e.g. "1 1/2"
+                    parts = s.split(' ')
+                    val = float(parts[0])
+                    if '/' in parts[1]:
+                        num, den = map(float, parts[1].split('/'))
+                        val += num / den
+                elif '/' in s: # e.g. "1/2"
+                    num, den = map(float, s.split('/'))
+                    val = num / den
+                else: # e.g. "2" or "2.5"
+                    val = float(s)
+            except (ValueError, IndexError, ZeroDivisionError):
+                val = 999.0
             return val
             
         sorted_nds = sorted(grouped_pipes.keys(), key=nd_sort_key)
         
+        optimize_weight = inputs.get('optimize_weight', False)
+        fast_calc = inputs.get('fast_calculation', True) # Yeni parametre
+
         selected_pipe = None
         final_result = None
-        alternatives = {} # "thinner", "thicker"
+        alternatives = {} # "thinner", "thicker", "lowest_weight" (if not selected)
+        
+        valid_candidates = []
+        found_valid = False
         
         # En küçük çaptan başlayarak dene
         for nd in sorted_nds:
             schedules = sorted(grouped_pipes[nd], key=lambda x: x['t_mm']) # En inceden kalına
             
-            # Bu ND için en ince (ve geçerli) schedule'ı al (zaten get_sorted_pipes geçerlileri döndürdü)
-            candidate = schedules[0] 
+            # Bu ND için en ince (ve geçerli) schedule'ı al (zaten get_sorted_pipes geçerlileri döndürдü)
+            candidate = schedules[0]
             
-            # Simülasyon
-            sim_inputs = inputs.copy()
-            sim_inputs = inputs.copy()
-            sim_inputs['D_inner'] = candidate['D_inner_mm'] # calculate_pressure_drop içinde metreye çevriliyor
-            sim_res = self.calculate_pressure_drop(sim_inputs, num_segments=5) # Hızlı kontrol
+            # —— Öneri 2: Analitik Hız Ön Filtresi ——
+            # Eğer ideal gaz yaklaşımıyla dahi hız limiti çok aşılıyorsa simulásyona girme
+            D_cand_m = candidate['D_inner_mm'] / 1000.0
+            A_cand = math.pi * (D_cand_m ** 2) / 4
+            v_ideal = (m_dot / rho_in) / A_cand
+            # Analitik oran: eğer ideal gaz tahmininde hız limitin %150'sinin üzerindeyse kesin uymuyor
+            if v_ideal > max_vel * 1.5 and not found_valid:
+                continue  # Bu çap çok küçük, simulásyona gerek yok
             
-            if sim_res['velocity_out'] <= max_vel:
-                # Bulduk!
-                selected_pipe = candidate
-                # Hassas hesap
-                final_result = self.calculate_pressure_drop(sim_inputs, num_segments=20)
-                final_result['velocity_status'] = "Uygun"
+            if not found_valid or not fast_calc:
+                # Simülasyon (Henüz geçerli bulunmadıysa VEYA hızlı hesaplama kapalıysa her çap için simülasyon yap)
+                sim_inputs = inputs.copy()
+                sim_inputs['D_inner'] = candidate['D_inner_mm'] # calculate_pressure_drop içinde metreye çevriliyor
+                sim_res = self.calculate_pressure_drop(sim_inputs, num_segments=5) # Hızlı kontrol
                 
-                # Alternatifleri Bul
-                # 1. Thicker (Aynı ND, bir sonraki schedule)
-                if len(schedules) > 1:
-                    thicker_cand = schedules[1]
-                    sim_inputs_thick = inputs.copy()
-                    sim_inputs_thick = inputs.copy()
-                    sim_inputs_thick['D_inner'] = thicker_cand['D_inner_mm']
-                    res_thick = self.calculate_pressure_drop(sim_inputs_thick, num_segments=20)
-                    alternatives['thicker'] = {
-                        'pipe': thicker_cand, 'result': res_thick, 
-                        'note': "Daha Kalın Etli (Aynı Çap)"
-                    }
+                if sim_res['velocity_out'] <= max_vel:
+                    found_valid = True
+                    # Adayı kaydet
+                    candidate['weight_per_m'] = calculate_pipe_weight_api5l(candidate['OD_mm'], candidate['t_mm'])
+                    valid_candidates.append((candidate, nd, schedules))
+                    
+                    # Eğer ne ağırlık optimizasyonu ne de hızlı yoksayma istenmiyorsa (Yani V5'teki Orijinal Klasik Davranış)
+                    if not optimize_weight and not fast_calc:
+                        # V5'teki orijinal davranış simülasyona devam etmiyordu, ilk bulduğunda duruyordu.
+                        # Ancak V6.1'de seçenekleri ayırdık. 
+                        # Eğer Hızlı Hesaplama KAPALI ise, kullanıcının amacı tüm çaplar için basınç düşümünü görüp "En Düşük Ağırlığı" bulabilmek (arka planda olsa bile).
+                        # Bu yüzden break YAPMIYORUZ, devam ediyoruz.
+                        pass
+                    
+            else:
+                # Daha büyük çaplar kesinlikle hız kriterini sağlar. Basınca da zaten baştan bakılmıştı.
+                # Tekrar simülasyon yapmadan direkt ekle, sadece ağırlığı hesapla (Fast Calc = TRUE rotası)
+                candidate['weight_per_m'] = calculate_pipe_weight_api5l(candidate['OD_mm'], candidate['t_mm'])
+                valid_candidates.append((candidate, nd, schedules))
+
+        if valid_candidates:
+            if optimize_weight:
+                # Tüm geçerli adayları ağırlığa göre sırala (en hafif olan en üstte)
+                valid_candidates.sort(key=lambda x: x[0]['weight_per_m'])
                 
-                # 2. Thinner (Bir önceki ND'nin en kalını veya bu ND'nin daha incesi - ama t_req sağlamayanlar listede yok)
-                # Bir önceki ND'yi kontrol edelim
-                current_nd_idx = sorted_nds.index(nd)
-                if current_nd_idx > 0:
-                    prev_nd = sorted_nds[current_nd_idx - 1]
-                    prev_schedules = sorted(grouped_pipes[prev_nd], key=lambda x: x['t_mm'])
-                    # Bir önceki çapın en incesi
-                    thinner_cand = prev_schedules[0]
-                    sim_inputs_thin = inputs.copy()
-                    sim_inputs_thin = inputs.copy()
-                    sim_inputs_thin['D_inner'] = thinner_cand['D_inner_mm']
-                    res_thin = self.calculate_pressure_drop(sim_inputs_thin, num_segments=20)
-                    alternatives['thinner'] = {
-                        'pipe': thinner_cand, 'result': res_thin,
-                        'note': "Bir Alt Çap (Hız Limiti Aşıldı)"
-                    }
-                
-                break
+            # İlk adayı seç (ya en küçük çap ya da en hafif)
+            best_tuple = valid_candidates[0]
+            selected_pipe = best_tuple[0]
+            nd = best_tuple[1]
+            schedules = best_tuple[2]
+            
+            # Hassas hesap
+            sim_inputs = inputs.copy()
+            sim_inputs['D_inner'] = selected_pipe['D_inner_mm']
+            final_result = self.calculate_pressure_drop(sim_inputs, num_segments=20)
+            final_result['velocity_status'] = "Uygun"
+            
+            # Ağırlık zaten hesaplıydı ama yine de koyalım
+            if 'weight_per_m' not in selected_pipe:
+                 selected_pipe['weight_per_m'] = calculate_pipe_weight_api5l(selected_pipe['OD_mm'], selected_pipe['t_mm'])
+                 
+            # Alternatifleri paralel simüle et (ThreadPoolExecutor)
+            def run_alt_sim(inp):
+                return self.calculate_pressure_drop(inp, num_segments=10)  # Öneri 3: 20 yerine 10 segment
+
+            alt_tasks = {}
+            alt_inputs = {}
+
+            if len(schedules) > 1:
+                thick_inp = inputs.copy(); thick_inp['D_inner'] = schedules[1]['D_inner_mm']
+                alt_inputs['thicker'] = thick_inp
+
+            current_nd_idx = sorted_nds.index(nd)
+            if current_nd_idx > 0:
+                prev_nd = sorted_nds[current_nd_idx - 1]
+                prev_schedules = sorted(grouped_pipes[prev_nd], key=lambda x: x['t_mm'])
+                thin_inp = inputs.copy(); thin_inp['D_inner'] = prev_schedules[0]['D_inner_mm']
+                alt_inputs['thinner'] = thin_inp
+
+            if not optimize_weight and len(valid_candidates) > 1:
+                lightest_tuple = min(valid_candidates, key=lambda x: x[0]['weight_per_m'])
+                lightest = lightest_tuple[0]
+                if lightest['nominal'] != selected_pipe['nominal'] or lightest['schedule'] != selected_pipe['schedule']:
+                    light_inp = inputs.copy(); light_inp['D_inner'] = lightest['D_inner_mm']
+                    alt_inputs['lowest_weight'] = light_inp
+
+            # Alternatifleri ThreadPoolExecutor ile paralel çalıştır
+            with ThreadPoolExecutor(max_workers=min(len(alt_inputs), 3)) as executor:
+                futures = {key: executor.submit(run_alt_sim, inp) for key, inp in alt_inputs.items()}
+
+            # Sonuçları topla
+            thicker_cand = schedules[1] if len(schedules) > 1 else None
+            if 'thicker' in futures and thicker_cand:
+                res_thick = futures['thicker'].result()
+                thicker_cand['weight_per_m'] = calculate_pipe_weight_api5l(thicker_cand['OD_mm'], thicker_cand['t_mm'])
+                alternatives['thicker'] = {'pipe': thicker_cand, 'result': res_thick, 'note': 'Daha Kalın Etli (Aynı Çap)'}
+
+            if current_nd_idx > 0 and 'thinner' in futures:
+                prev_schedules = sorted(grouped_pipes[sorted_nds[current_nd_idx - 1]], key=lambda x: x['t_mm'])
+                thinner_cand = prev_schedules[0]
+                res_thin = futures['thinner'].result()
+                thinner_cand['weight_per_m'] = calculate_pipe_weight_api5l(thinner_cand['OD_mm'], thinner_cand['t_mm'])
+                alternatives['thinner'] = {'pipe': thinner_cand, 'result': res_thin, 'note': 'Bir Alt Çap (Hız Limiti Aşıldı)'}
+
+            if 'lowest_weight' in futures:
+                lightest_tuple = min(valid_candidates, key=lambda x: x[0]['weight_per_m'])
+                lightest = lightest_tuple[0]
+                res_light = futures['lowest_weight'].result()
+                alternatives['lowest_weight'] = {'pipe': lightest, 'result': res_light, 'note': 'En Düşük Ağırlıklı Boru'}
         
         if selected_pipe is None:
              # Hiçbiri uymadı, en büyüğü al
@@ -631,8 +821,8 @@ class GasFlowCalculator:
         
         return result
 
-    def get_sorted_pipes(self, P_design_pa, material, F, E, T):
-        SMYS = PIPE_MATERIALS[material] * 1e6
+    def get_sorted_pipes(self, P_design_pa, SMYS_mpa, F, E, T):
+        SMYS = SMYS_mpa * 1e6  # MPa -> Pa
         all_pipes = []
         for nominal, data in ASME_B36_10M_DATA.items():
             OD = data["OD_mm"]

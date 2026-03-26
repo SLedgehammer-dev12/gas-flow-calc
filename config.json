@@ -1,8 +1,8 @@
 {
   "repo": "SLedgehammer-dev12/Programlar",
-  "update_mode": "branch",
+  "update_mode": "releases",
   "branch": "gas-flow-calc-v5",
-  "version_source_path": "main.py",
+  "version_source_path": "",
   "version_regex": "APP_VERSION\\s*=\\s*\"(\\d+\\.\\d+\\.\\d+)\"",
   "app_subdir_in_zip": "",
   "exclude_on_apply": [
@@ -12,6 +12,6 @@
     "_backups",
     "dene.json"
   ],
-  "asset_name_regex": "(gas[-_ ]?flow[-_ ]?calc).*\\.zip",
+  "asset_name_regex": "(gas[-_ ]?flow[-_ ]?calc).*\\.exe",
   "language": "tr"
 }
