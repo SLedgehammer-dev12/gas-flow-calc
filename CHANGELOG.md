@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.1.4
+
+- Explicitly bundled `unicodedata` for PyInstaller builds to prevent packaged startup crashes.
+- Lazy-loaded matplotlib Tk backend imports in the graph module.
+- Switched the packaged executable name to a versioned format such as `Gas Flow Calc V6.1.4.exe`.
+
 ## 6.1.3
 
 - Added a dedicated `Releases` folder for local packaged `.exe` outputs.

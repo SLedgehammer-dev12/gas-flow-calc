@@ -1,12 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(SPEC)))
+
+from release_metadata import get_versioned_exe_stem
+
+
+APP_EXE_STEM = get_versioned_exe_stem()
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
     datas=[],
-    hiddenimports=[],
+    hiddenimports=['unicodedata', 'matplotlib.backends.backend_tkagg', 'matplotlib.backends._backend_tk'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -22,7 +31,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Gas Flow Calc V6.1',
+    name=APP_EXE_STEM,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

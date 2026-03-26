@@ -1,13 +1,10 @@
-import tkinter as tk
-from tkinter import messagebox
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
 def show_graphs(container, result):
     """Hesaplama sonuçları için grafikleri sağlanan container içine çizer."""
     if not result: return
     
     try:
         import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     except ImportError:
         # matplotlib yoksa sessizce geç veya konsola yaz, sonuçta arayüzün ana parçası değil.
         return

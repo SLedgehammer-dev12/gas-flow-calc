@@ -12,7 +12,7 @@ import sys
 
 # Modüler importlar
 from app_paths import get_config_path, get_install_dir, get_session_file_path, load_config, save_config
-from release_metadata import APP_VERSION, get_release_notes, get_release_notes_title
+from release_metadata import APP_VERSION, get_release_notes, get_release_notes_title, get_versioned_exe_name
 from data import COOLPROP_GASES, PIPE_MATERIALS, PIPE_ROUGHNESS, FITTING_K_FACTORS, ASME_B36_10M_DATA, GAS_PRESETS
 from calculations import GasFlowCalculator
 from updater import Updater
@@ -1676,7 +1676,7 @@ class GasFlowCalculatorApp:
         return [("All Files", "*.*")]
 
     def _prompt_update_download_path(self, asset_info):
-        asset_name = asset_info.get("name") or f"Gas.Flow.Calc.V{APP_VERSION}.exe"
+        asset_name = asset_info.get("name") or get_versioned_exe_name()
         ext = os.path.splitext(asset_name)[1].lower()
         return filedialog.asksaveasfilename(
             title=t("update_save_as"),
