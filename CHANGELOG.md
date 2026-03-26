@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.1.6
+
+- Fixed the Python 3.13 `CoolProp` string/bytes compatibility failure that caused `expected bytes, str found`.
+- Normalized gas-name handling across internal IDs, CoolProp names, and display labels.
+- Hardened flow-unit parsing so corrupted `Sm3/h` labels no longer get treated as `kg/s`.
+- Added regression coverage for the updated CoolProp and unit-handling paths.
+
 ## 6.1.5
 
 - Switched the updater default repo to the public `SLedgehammer-dev12/gas-flow-calc` repository.

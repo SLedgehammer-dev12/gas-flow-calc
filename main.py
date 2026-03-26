@@ -1263,7 +1263,7 @@ class GasFlowCalculatorApp:
         else: P_in = p_in_val * 6894.76
 
         t_val = self.get_float_value(self.t_var, 25)
-        t_unit = self.t_unit.get()
+        t_unit = str(self.t_unit.get()).replace("Â", "").strip()
         if t_unit == "°C": T = t_val + 273.15
         elif t_unit == "°F": T = (t_val - 32) * 5/9 + 273.15
         else: T = t_val

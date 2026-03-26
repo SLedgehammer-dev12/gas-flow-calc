@@ -10,6 +10,28 @@ from data import COOLPROP_GASES, PIPE_MATERIALS, PIPE_ROUGHNESS, FITTING_K_FACTO
 R_J_mol_K = 8.314462618
 MIN_PRESSURE_PA = 1000.0 # Mutlak minimum basınç (1000 Pa)
 
+_GAS_NAME_LOOKUP = {}
+for gas_key, gas_props in COOLPROP_GASES.items():
+    canonical_name = gas_props["id"]
+    _GAS_NAME_LOOKUP[gas_key.casefold()] = canonical_name
+    _GAS_NAME_LOOKUP[canonical_name.casefold()] = canonical_name
+    _GAS_NAME_LOOKUP[gas_props["name"].casefold()] = canonical_name
+
+
+def _cp_arg(value):
+    if isinstance(value, str):
+        return value.encode("ascii")
+    return value
+
+
+def cp_propssi(*args):
+    return CP.PropsSI(*(_cp_arg(arg) for arg in args))
+
+
+def cp_abstract_state(backend, fluids):
+    return CP.AbstractState(_cp_arg(backend), _cp_arg(fluids))
+
+
 class GasFlowCalculator:
     def __init__(self):
         self.log_callback = None
@@ -34,17 +56,42 @@ class GasFlowCalculator:
     # --- YARDIMCI FONKSİYONLAR ---
     def validate_inputs(self, inputs):
         """Temel giriş doğrulama."""
-        if not inputs.get("gas_composition"): raise ValueError("Gaz bileşimi boş olamaz.")
+        if not inputs.get("mole_fractions"): raise ValueError("Gaz bileşimi boş olamaz.")
         if inputs.get("P_in") < 0: raise ValueError("Giriş basıncı negatif olamaz.")
         if inputs.get("T") <= 0: raise ValueError("Sıcaklık pozitif olmalıdır.")
         return True
 
+    def normalize_gas_name(self, gas):
+        text = str(gas).strip()
+        canonical = _GAS_NAME_LOOKUP.get(text.casefold())
+        if not canonical and "(" in text:
+            canonical = _GAS_NAME_LOOKUP.get(text.split("(", 1)[0].strip().casefold())
+        if canonical:
+            return canonical
+        raise ValueError(f"Desteklenmeyen gaz tanimi: {gas}")
+
+    def normalize_mole_fractions(self, mole_fractions):
+        normalized = {}
+        for gas, fraction in mole_fractions.items():
+            canonical = self.normalize_gas_name(gas)
+            normalized[canonical] = normalized.get(canonical, 0.0) + float(fraction)
+
+        total = sum(normalized.values())
+        if total <= 0:
+            raise ValueError("Gaz bilesimi bos olamaz.")
+
+        return {gas: value / total for gas, value in normalized.items()}
+
+    def is_mass_flow_unit(self, flow_unit):
+        return str(flow_unit).strip().casefold() == "kg/s"
+
     def mass_to_mole_fraction(self, mass_fractions):
         total_moles = 0.0; moles = {}
         for gas, mass_frac in mass_fractions.items():
-            try: MW = CP.PropsSI('M', gas)
+            canonical = self.normalize_gas_name(gas)
+            try: MW = cp_propssi('M', canonical)
             except Exception as e: raise ValueError(f"{gas} için moleküler ağırlık alınamadı: {str(e)}")
-            moles[gas] = mass_frac / MW; total_moles += moles[gas]
+            moles[canonical] = mass_frac / MW; total_moles += moles[canonical]
         if total_moles == 0: raise ValueError("Toplam mol sıfır!")
         return {gas: mole / total_moles for gas, mole in moles.items()}
 
@@ -62,16 +109,18 @@ class GasFlowCalculator:
 
     # --- TERMODİNAMİK MODELLER ---
     def get_pure_component_props(self, gas_id):
+        gas_id = self.normalize_gas_name(gas_id)
         try:
             return {
-                'Tc': CP.PropsSI('TCRIT', gas_id), 'Pc': CP.PropsSI('PCRIT', gas_id),
-                'omega': CP.PropsSI('ACENTRIC', gas_id), 'MW': CP.PropsSI('M', gas_id) * 1000
+                'Tc': cp_propssi('TCRIT', gas_id), 'Pc': cp_propssi('PCRIT', gas_id),
+                'omega': cp_propssi('ACENTRIC', gas_id), 'MW': cp_propssi('M', gas_id) * 1000
             }
         except Exception as e:
             # GÜVENLİK DÜZELTMESİ: Varsayılan değer atamak yerine hata fırlatıyoruz.
             raise ValueError(f"CoolProp hatası ({gas_id}): Kritik özellikler alınamadı. {str(e)}")
 
     def calculate_cubic_eos_props(self, P, T, mole_fractions, EOS_type):
+        mole_fractions = self.normalize_mole_fractions(mole_fractions)
         self.log(f"Hesaplama: {EOS_type} modeli kullanılıyor.", "DEBUG")
         A_c, B_c = (0.45724, 0.07780) if EOS_type == "PR" else (0.42748, 0.08664)
         kappa_coeffs = (0.37464, 1.54226, -0.26992) if EOS_type == "PR" else (0.48, 1.574, -0.176)
@@ -117,8 +166,8 @@ class GasFlowCalculator:
         Cp_mix, Cv_mix = 0, 0
         for gas, y in mole_fractions.items():
             try:
-                cp_i = CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
-                cv_i = CP.PropsSI('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
+                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
+                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
                 Cp_mix += y * cp_i
                 Cv_mix += y * cv_i
             except Exception:
@@ -142,8 +191,9 @@ class GasFlowCalculator:
         """CoolProp AbstractState nesnesi oluşturur (Performans için)."""
         try:
             backend = "HEOS"
-            fluids = list(mole_fractions.keys())
-            fractions = list(mole_fractions.values())
+            normalized = self.normalize_mole_fractions(mole_fractions)
+            fluids = list(normalized.keys())
+            fractions = list(normalized.values())
             
             # Gaz isimlerini CoolProp formatına uygun hale getir (örn. "Methane (CH4)" -> "Methane")
             # Ancak data.py'da zaten CoolProp isimleri anahtar olarak kullanılıyor (örn. "METHANE" -> "Methane (CH4)")
@@ -157,12 +207,7 @@ class GasFlowCalculator:
             # CoolProp expects "Methane".
             # I should probably clean the names.
             
-            clean_fluids = []
-            for f in fluids:
-                clean_name = COOLPROP_GASES[f]["id"]
-                clean_fluids.append(clean_name)
-                
-            state = CP.AbstractState(backend, "&".join(clean_fluids))
+            state = cp_abstract_state(backend, "&".join(fluids))
             state.set_mole_fractions(fractions)
             return state
         except Exception as e:
@@ -174,7 +219,7 @@ class GasFlowCalculator:
         101325 Pa, 288.15 K değişmediğinden her hesaplama için 1 kere yeterli."""
         if mixture not in self._std_density_cache:
             try:
-                d = CP.PropsSI('D', 'P', 101325, 'T', 288.15, mixture)
+                d = cp_propssi('D', 'P', 101325, 'T', 288.15, mixture)
             except Exception:
                 d = 0.0
             self._std_density_cache[mixture] = d
@@ -215,21 +260,21 @@ class GasFlowCalculator:
         else:
             # AbstractState yok, doğrudan PropsSI — standart yoğunluk cache’den zaten geldi
             
-            MW_mix = CP.PropsSI('M', 'P', P, 'T', T, mixture) * 1000
+            MW_mix = cp_propssi('M', 'P', P, 'T', T, mixture) * 1000
 
             try:
-                viscosity = CP.PropsSI('V', 'P', P, 'T', T, mixture)
+                viscosity = cp_propssi('V', 'P', P, 'T', T, mixture)
             except Exception:
                 viscosity_fallback = True
                 viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04) # Basit tahmin
             
-            Cp = CP.PropsSI('C', 'P', P, 'T', T, mixture) / 1000
-            Cv = CP.PropsSI('O', 'P', P, 'T', T, mixture) / 1000
-            Z = CP.PropsSI('Z', 'P', P, 'T', T, mixture)
-            density = CP.PropsSI('D', 'P', P, 'T', T, mixture)
+            Cp = cp_propssi('C', 'P', P, 'T', T, mixture) / 1000
+            Cv = cp_propssi('O', 'P', P, 'T', T, mixture) / 1000
+            Z = cp_propssi('Z', 'P', P, 'T', T, mixture)
+            density = cp_propssi('D', 'P', P, 'T', T, mixture)
             
             try:
-                sonic_velocity = CP.PropsSI('A', 'P', P, 'T', T, mixture)
+                sonic_velocity = cp_propssi('A', 'P', P, 'T', T, mixture)
             except Exception:
                 sonic_velocity = 340.0
 
@@ -245,6 +290,7 @@ class GasFlowCalculator:
         return props
 
     def calculate_pseudo_critical_properties(self, P, T, mole_fractions):
+        mole_fractions = self.normalize_mole_fractions(mole_fractions)
         # self.log("Hesaplama: Pseudo-Critical (Kay's Rule) modeli kullanılıyor.", "DEBUG")
         Ppc, Tpc, MW_mix = 0, 0, 0
         for gas, y in mole_fractions.items():
@@ -321,8 +367,8 @@ class GasFlowCalculator:
         Cp_mix, Cv_mix = 0, 0
         for gas, y in mole_fractions.items():
             try:
-                cp_i = CP.PropsSI('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
-                cv_i = CP.PropsSI('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
+                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
+                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
                 Cp_mix += y * cp_i
                 Cv_mix += y * cv_i
             except Exception:
@@ -345,6 +391,7 @@ class GasFlowCalculator:
         }
 
     def calculate_thermo_properties(self, P, T, mole_fractions, library_choice, state=None):
+        mole_fractions = self.normalize_mole_fractions(mole_fractions)
         if library_choice == "CoolProp (High Accuracy EOS)":
             mixture = "&".join([f"{k}[{v:.6f}]" for k, v in mole_fractions.items()]) # Fallback string
             return self.calculate_coolprop_properties(P, T, mixture, state)
@@ -365,6 +412,7 @@ class GasFlowCalculator:
         """
         P_in = inputs['P_in']; T = inputs['T']; mole_fractions = inputs['mole_fractions']
         library_choice = inputs['library_choice']; flow_val = inputs['flow_rate']; flow_unit = inputs['flow_unit']
+        flow_unit = "kg/s" if self.is_mass_flow_unit(flow_unit) else "SmÂ³/h"
         D_inner = inputs['D_inner']; L = inputs['L']; roughness = inputs['roughness']; total_k = inputs['total_k']
         flow_property = inputs['flow_property']
 
@@ -382,7 +430,22 @@ class GasFlowCalculator:
         else: # kg/s
             m_dot = flow_val
 
+        if self.is_mass_flow_unit(flow_unit):
+            m_dot = flow_val
+        else:
+            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
+
+        if self.is_mass_flow_unit(flow_unit):
+            m_dot = flow_val
+        else:
+            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
+
         # Çapı metreye çevir (Girdi mm)
+        if self.is_mass_flow_unit(flow_unit):
+            m_dot = flow_val
+        else:
+            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
+
         D_m = D_inner / 1000.0
         A = math.pi * (D_m ** 2) / 4
         velocity_in = m_dot / (rho_in * A)
@@ -505,6 +568,11 @@ class GasFlowCalculator:
                 m_dot = (inputs['flow_rate'] / 3600) * gas_props_in['standard_density']
              else:
                 m_dot = inputs['flow_rate']
+
+             if self.is_mass_flow_unit(inputs['flow_unit']):
+                m_dot = inputs['flow_rate']
+             else:
+                m_dot = (inputs['flow_rate'] / 3600) * gas_props_in['standard_density']
                 
              return {
                 "L_max": 0, 
@@ -516,6 +584,7 @@ class GasFlowCalculator:
         
         T = inputs['T']; mole_fractions = inputs['mole_fractions']
         library_choice = inputs['library_choice']; flow_val = inputs['flow_rate']; flow_unit = inputs['flow_unit']
+        flow_unit = "kg/s" if self.is_mass_flow_unit(flow_unit) else "SmÂ³/h"
         D_inner = inputs['D_inner']; roughness = inputs['roughness']; total_k = inputs['total_k']
         flow_property = inputs['flow_property']
 
@@ -602,6 +671,7 @@ class GasFlowCalculator:
         """Minimum çap hesabı ve ticari boru seçimi (İteratif ve Karşılaştırmalı)."""
         P_in = inputs['P_in']; T = inputs['T']; mole_fractions = inputs['mole_fractions']
         library_choice = inputs['library_choice']; flow_val = inputs['flow_rate']; flow_unit = inputs['flow_unit']
+        flow_unit = "kg/s" if self.is_mass_flow_unit(flow_unit) else "SmÂ³/h"
         max_vel = inputs['max_velocity']
         
         # Yeni Girdiler

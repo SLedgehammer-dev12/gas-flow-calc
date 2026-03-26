@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.5"
+APP_VERSION = "6.1.6"
 
 
 RELEASE_NOTES = {
@@ -76,6 +76,20 @@ RELEASE_NOTES = {
 - The default update source now points to the public GitHub repo SLedgehammer-dev12/gas-flow-calc.
 - Existing local configs that still point to the older private repo are migrated automatically.
 - Update checks now work through GitHub releases without requiring a token.""",
+    },
+    "6.1.6": {
+        "tr": """6.1.6 ile gelen baslica yenilikler:
+
+- CoolProp cagri katmani Python 3.13 ortami icin uyumlu hale getirildi ve expected bytes, str found hatasi giderildi.
+- Gaz bilesimi anahtarlari artik hem ic ID hem CoolProp adi hem de gorunen etiketlerle guvenli sekilde esleniyor.
+- Debi birimi yorumlamasi saglamlastirildi; Sm3/h etiket bozulmalarinda bile hesaplar artik kg/s ile karismiyor.
+- CoolProp ve debi birimi icin regresyon testleri eklendi.""",
+        "en": """Highlights introduced in 6.1.6:
+
+- The CoolProp call layer was made compatible with Python 3.13, fixing the expected bytes, str found error.
+- Gas composition keys are now resolved safely across internal IDs, CoolProp names, and display labels.
+- Flow-unit parsing was hardened so Sm3/h label corruption no longer falls through as kg/s.
+- Regression tests were added for CoolProp compatibility and flow-unit handling.""",
     },
 }
 
