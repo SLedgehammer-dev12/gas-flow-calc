@@ -1,6 +1,6 @@
 {
-  "repo": "SLedgehammer-dev12/gas-flow-calc-v6-1",
-  "private_repo": true,
+  "repo": "SLedgehammer-dev12/gas-flow-calc",
+  "private_repo": false,
   "update_mode": "releases",
   "branch": "main",
   "version_source_path": "",

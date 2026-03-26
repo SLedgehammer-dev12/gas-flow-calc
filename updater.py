@@ -17,8 +17,8 @@ GITHUB_BRANCH_ZIP = "https://github.com/{repo}/archive/refs/heads/{branch}.zip"
 GITHUB_RAW_FILE = "https://raw.githubusercontent.com/{repo}/{branch}/{path}"
 
 DEFAULT_CONFIG = {
-    "repo": "SLedgehammer-dev12/gas-flow-calc-v6-1",
-    "private_repo": True,
+    "repo": "SLedgehammer-dev12/gas-flow-calc",
+    "private_repo": False,
     "asset_name_regex": r"(gas[\s._-]*flow[\s._-]*calc).*\.(exe|zip)$",
     "update_mode": "releases",
     "branch": "main",
@@ -35,9 +35,16 @@ def _load_config(log):
         config = load_config(DEFAULT_CONFIG)
         migrated = False
 
-        if config.get("repo") in {"SLedgehammer-dev12/Programlar", "SLedgehammer-dev12/gas-flow-calc-v6-1"}:
+        if config.get("repo") in {
+            "SLedgehammer-dev12/Programlar",
+            "SLedgehammer-dev12/gas-flow-calc-v6-1",
+            "SLedgehammer-dev12/gas-flow-calc",
+        }:
             if config.get("repo") != DEFAULT_CONFIG["repo"]:
                 config["repo"] = DEFAULT_CONFIG["repo"]
+                migrated = True
+            if config.get("private_repo") != DEFAULT_CONFIG["private_repo"]:
+                config["private_repo"] = DEFAULT_CONFIG["private_repo"]
                 migrated = True
 
         if config.get("repo") == DEFAULT_CONFIG["repo"] and config.get("update_mode") == "branch":
@@ -49,6 +56,10 @@ def _load_config(log):
 
         if config.get("repo") == DEFAULT_CONFIG["repo"] and config.get("asset_name_regex") != DEFAULT_CONFIG["asset_name_regex"]:
             config["asset_name_regex"] = DEFAULT_CONFIG["asset_name_regex"]
+            migrated = True
+
+        if config.get("repo") == DEFAULT_CONFIG["repo"] and config.get("private_repo") != DEFAULT_CONFIG["private_repo"]:
+            config["private_repo"] = DEFAULT_CONFIG["private_repo"]
             migrated = True
 
         if migrated:

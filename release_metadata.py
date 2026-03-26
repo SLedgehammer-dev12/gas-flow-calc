@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.4"
+APP_VERSION = "6.1.5"
 
 
 RELEASE_NOTES = {
@@ -64,6 +64,18 @@ RELEASE_NOTES = {
 - The missing unicodedata module is now explicitly bundled in the PyInstaller package.
 - The graph module now lazy-loads matplotlib components for more reliable startup behavior.
 - Generated .exe files now include the version number in their file name.""",
+    },
+    "6.1.5": {
+        "tr": """6.1.5 ile gelen baslica yenilikler:
+
+- Varsayilan guncelleme kaynagi public GitHub repo olan SLedgehammer-dev12/gas-flow-calc olarak guncellendi.
+- Eski private repo ayarlari olan yerel config dosyalari otomatik olarak yeni public repo ayarina tasiniyor.
+- Guncelleme kontrolu artik token gerektirmeden GitHub release uzerinden calisiyor.""",
+        "en": """Highlights introduced in 6.1.5:
+
+- The default update source now points to the public GitHub repo SLedgehammer-dev12/gas-flow-calc.
+- Existing local configs that still point to the older private repo are migrated automatically.
+- Update checks now work through GitHub releases without requiring a token.""",
     },
 }
 

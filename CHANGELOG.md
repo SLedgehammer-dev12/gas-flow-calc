@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.1.5
+
+- Switched the updater default repo to the public `SLedgehammer-dev12/gas-flow-calc` repository.
+- Added automatic migration for legacy local configs that still reference the older private repo.
+- Removed the default private-repo update requirement so release checks can work without a token.
+
 ## 6.1.4
 
 - Explicitly bundled `unicodedata` for PyInstaller builds to prevent packaged startup crashes.
