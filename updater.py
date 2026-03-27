@@ -2,6 +2,8 @@ import json
 import os
 import re
 import shutil
+import ssl
+import subprocess
 import tempfile
 import zipfile
 from datetime import datetime
@@ -115,7 +117,79 @@ class Updater:
                 return "GitHub token gecersiz veya yetkisiz (HTTP 401)."
             if error.code == 403:
                 return "GitHub erisimi reddedildi veya rate limit asildi (HTTP 403)."
+        if isinstance(error, URLError) and self._is_ssl_verification_error(error):
+            return (
+                "SSL sertifika zinciri dogrulanamadi. Kurumsal ag SSL denetimi veya "
+                "eksik sertifika zinciri nedeniyle Python/OpenSSL GitHub baglantisini reddetti."
+            )
         return str(error)
+
+    def _is_ssl_verification_error(self, error):
+        reason = getattr(error, "reason", error)
+        if isinstance(reason, ssl.SSLCertVerificationError):
+            return True
+        text = str(reason or error)
+        return "CERTIFICATE_VERIFY_FAILED" in text or "Missing Authority Key Identifier" in text
+
+    @staticmethod
+    def _ps_quote(value: str):
+        return "'" + str(value).replace("'", "''") + "'"
+
+    def _powershell_headers(self, headers):
+        items = [f"{self._ps_quote(key)}={self._ps_quote(value)}" for key, value in headers.items()]
+        return "@{" + ";".join(items) + "}"
+
+    def _powershell_fetch_text(self, url: str, headers: dict, timeout: int):
+        command = (
+            "$ProgressPreference='SilentlyContinue'; "
+            f"$headers={self._powershell_headers(headers)}; "
+            "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
+            f"$response=Invoke-WebRequest -UseBasicParsing -Uri {self._ps_quote(url)} "
+            f"-Headers $headers -TimeoutSec {int(timeout)}; "
+            "$response.Content"
+        )
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=max(30, int(timeout) + 15),
+            check=True,
+        )
+        return result.stdout
+
+    def _powershell_download_to_path(self, url: str, headers: dict, destination_path: str, timeout: int):
+        command = (
+            "$ProgressPreference='SilentlyContinue'; "
+            f"$headers={self._powershell_headers(headers)}; "
+            f"Invoke-WebRequest -UseBasicParsing -Uri {self._ps_quote(url)} "
+            f"-Headers $headers -TimeoutSec {int(timeout)} -OutFile {self._ps_quote(destination_path)}"
+        )
+        subprocess.run(
+            ["powershell", "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=max(60, int(timeout) + 30),
+            check=True,
+        )
+
+    def _read_url_text(self, url: str, accept: str | None = None, timeout: int = 10):
+        headers = self._headers(accept)
+        req = Request(url, headers=headers)
+        try:
+            with urlopen(req, timeout=timeout) as resp:
+                return resp.read().decode("utf-8", errors="ignore")
+        except HTTPError:
+            raise
+        except URLError as error:
+            if os.name == "nt" and self._is_ssl_verification_error(error):
+                self.log(
+                    "Python SSL dogrulamasi basarisiz oldu; Windows ag katmani ile tekrar deneniyor.",
+                    level="WARNING",
+                )
+                return self._powershell_fetch_text(url, headers, timeout)
+            raise
 
     def _default_download_path(self, file_name: str):
         tmp_dir = os.path.join(tempfile.gettempdir(), "gas_flow_calc_updates")
@@ -152,9 +226,7 @@ class Updater:
             quoted_path = quote(self.version_source_path, safe="/")
             raw_url = GITHUB_RAW_FILE.format(repo=self.repo, branch=self.branch, path=quoted_path)
             try:
-                req = Request(raw_url, headers=self._headers())
-                with urlopen(req, timeout=10) as resp:
-                    content = resp.read().decode("utf-8", errors="ignore")
+                content = self._read_url_text(raw_url, timeout=10)
             except Exception as e:
                 self.log(f"Surum bilgisi alinamadi: {e}", level="ERROR")
                 return None
@@ -172,9 +244,8 @@ class Updater:
 
         url = GITHUB_API_RELEASES.format(repo=self.repo)
         try:
-            req = Request(url, headers=self._headers("application/vnd.github+json"))
-            with urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
+            content = self._read_url_text(url, accept="application/vnd.github+json", timeout=10)
+            data = json.loads(content)
         except (URLError, HTTPError) as e:
             self.log(f"GitHub API erisim hatasi: {self._format_request_error(e)}", level="ERROR")
             return None
@@ -225,17 +296,30 @@ class Updater:
             return None
 
         self.log(f"Indirme basliyor: {file_name}")
+        file_path = destination_path or self._default_download_path(file_name)
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         try:
             req = Request(browser_download_url, headers=self._headers())
             with urlopen(req, timeout=60) as resp:
                 data = resp.read()
         except (URLError, HTTPError) as e:
+            if isinstance(e, URLError) and os.name == "nt" and self._is_ssl_verification_error(e):
+                self.log(
+                    "Python SSL dogrulamasi basarisiz oldu; indirme Windows ag katmani ile tekrar deneniyor.",
+                    level="WARNING",
+                )
+                try:
+                    self._powershell_download_to_path(browser_download_url, self._headers(), file_path, timeout=60)
+                    self.log(f"Indirme tamamlandi: {file_path}")
+                    return file_path
+                except Exception as fallback_error:
+                    raise RuntimeError(
+                        f"Indirme basarisiz: {self._format_request_error(e)} / PowerShell fallback: {fallback_error}"
+                    ) from e
             raise RuntimeError(f"Indirme basarisiz: {self._format_request_error(e)}") from e
         except Exception as e:
             raise RuntimeError(f"Indirme basarisiz: {e}") from e
 
-        file_path = destination_path or self._default_download_path(file_name)
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "wb") as f:
             f.write(data)
         self.log(f"Indirme tamamlandi: {file_path}")

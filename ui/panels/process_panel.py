@@ -88,7 +88,7 @@ class ProcessPanel(ttk.LabelFrame):
         seg_frame.pack(fill="x", pady=(4, 0))
 
         self.app.calc_target = tk.StringVar(
-            value=t("target_pressure_drop"))
+            value=t("target_min_diameter"))
 
         targets = [
             ("📉  " + t("target_pressure_drop"), t("target_pressure_drop")),
@@ -111,11 +111,6 @@ class ProcessPanel(ttk.LabelFrame):
     def _on_seg_click(self, val):
         """Segmented buton tıklamasında stil güncelle ve event tetikle."""
         self.app.calc_target.set(val)
-        for k, btn in self.app._seg_buttons.items():
-            btn.configure(
-                style="SegBtnActive.TButton" if k == val
-                else "SegBtn.TButton")
-        self.app.update_ui_visibility()
 
     def get(self):
         """Mevcut hesaplama hedefini döndürür (Combobox uyumlu arayüz)."""

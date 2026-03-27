@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.6"
+APP_VERSION = "6.1.7"
 
 
 RELEASE_NOTES = {
@@ -90,6 +90,20 @@ RELEASE_NOTES = {
 - Gas composition keys are now resolved safely across internal IDs, CoolProp names, and display labels.
 - Flow-unit parsing was hardened so Sm3/h label corruption no longer falls through as kg/s.
 - Regression tests were added for CoolProp compatibility and flow-unit handling.""",
+    },
+    "6.1.7": {
+        "tr": """6.1.7 ile gelen baslica yenilikler:
+
+- Acilista varsayilan hesaplama hedefi ile aktif segmented buton gosterimi senkron hale getirildi.
+- Proje yukleme ve ilk acilis akisi varsayilan hedef olarak Minimum Cap mantigi ile tutarli hale getirildi.
+- GitHub guncelleyici icin SSL sertifika dogrulama hatalari daha acik mesajlanir hale getirildi.
+- Windows ortaminda SSL zinciri Python tarafinda reddedilirse guncelleme istekleri PowerShell ag katmani ile yeniden deneniyor.""",
+        "en": """Highlights introduced in 6.1.7:
+
+- The startup default calculation target is now kept in sync with the active segmented-button state.
+- Project loading and first-launch behavior now consistently default to Minimum Diameter.
+- SSL certificate verification failures in the GitHub updater now produce clearer diagnostics.
+- On Windows, update requests are retried through the PowerShell network stack when Python rejects the certificate chain.""",
     },
 }
 

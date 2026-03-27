@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.1.7
+
+- Fixed the startup calculation-target mismatch so the active segmented button matches the default `Minimum Diameter` mode.
+- Aligned project-load fallback behavior with the same `Minimum Diameter` default target.
+- Clarified GitHub updater SSL certificate verification errors for corporate/intercepted network environments.
+- Added a Windows PowerShell network-stack fallback for updater requests when Python rejects the TLS certificate chain.
+
 ## 6.1.6
 
 - Fixed the Python 3.13 `CoolProp` string/bytes compatibility failure that caused `expected bytes, str found`.

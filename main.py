@@ -570,7 +570,8 @@ class GasFlowCalculatorApp:
     def _setup_schematic_bindings(self):
         """Şema otomatik güncelleme için binding'leri kur."""
         # Hesaplama hedefi değiştiğinde şemayı güncelle
-        self.calc_target.trace_add("write", lambda *args: self._on_target_or_input_change())
+        self._last_calc_target = self.calc_target.get()
+        self.calc_target.trace_add("write", self._on_calc_target_changed)
         
         # Akış tipi değiştiğinde şemayı güncelle
         self.flow_type.bind("<<ComboboxSelected>>", self._on_target_or_input_change)
@@ -587,6 +588,23 @@ class GasFlowCalculatorApp:
         
         # Debounce için timer ID
         self._schematic_update_timer = None
+
+    def _sync_calc_target_buttons(self):
+        for target, btn in getattr(self, "_seg_buttons", {}).items():
+            btn.configure(
+                style="SegBtnActive.TButton" if target == self.calc_target.get()
+                else "SegBtn.TButton"
+            )
+
+    def _on_calc_target_changed(self, *args):
+        current_target = self.calc_target.get()
+        if current_target != getattr(self, "_last_calc_target", None):
+            self.schematic_state = "pending"
+            self.last_result = None
+            self._last_calc_target = current_target
+        self._sync_calc_target_buttons()
+        self.update_ui_visibility()
+        self.refresh_schematic()
     
     def _on_target_or_input_change(self, event=None):
         """Hedef veya önemli girdi değiştiğinde."""
@@ -1059,7 +1077,7 @@ class GasFlowCalculatorApp:
         self.t_unit.set(data.get("t_unit", "°C"))
         self.flow_var.set(data.get("flow_val", 0))
         self.flow_unit.set(data.get("flow_unit", "Sm³/h"))
-        self.calc_target.set(data.get("calc_target", t("target_pressure_drop")))
+        self.calc_target.set(data.get("calc_target", t("target_min_diameter")))
         self.thermo_model.set(data.get("thermo_model", "CoolProp (High Accuracy EOS)"))
         self.flow_type.set(data.get("flow_type", "Sıkıştırılamaz"))
         self.material_combo.set(data.get("material", "API 5L Grade B"))
