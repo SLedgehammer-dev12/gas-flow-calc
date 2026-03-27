@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.1.10
+
+- Fixed the updater for public GitHub repos so an invalid stored token is cleared and the request is retried anonymously.
+- Prevented stale tokens from older private-repo setups from blocking automatic update checks and asset downloads.
+- Added regression coverage for the public-repo token fallback path.
+
 ## 6.1.9
 
 - Added an automatic startup update check that offers the GitHub release download flow when a newer version is available.

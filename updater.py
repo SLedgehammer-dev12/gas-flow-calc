@@ -96,13 +96,32 @@ class Updater:
         self.exclude_on_apply = set(self.config.get("exclude_on_apply", []))
         self.github_token = self.config.get("github_token") or os.environ.get("GITHUB_TOKEN") or ""
 
-    def _headers(self, accept: str | None = None):
+    def _headers(self, accept: str | None = None, include_auth: bool = True):
         headers = {"User-Agent": "GasFlowCalc-Updater"}
         if accept:
             headers["Accept"] = accept
-        if self.github_token:
+        if include_auth and self.github_token:
             headers["Authorization"] = f"Bearer {self.github_token}"
         return headers
+
+    def _clear_invalid_public_token(self):
+        if self.private_repo or not self.github_token:
+            return False
+
+        self.log(
+            "Public repo icin gecersiz GitHub token temizleniyor; istek kimliksiz tekrar denenecek.",
+            level="WARNING",
+        )
+        self.github_token = ""
+
+        if self.config.get("github_token"):
+            self.config["github_token"] = ""
+            try:
+                save_config(self.config)
+            except Exception as e:
+                self.log(f"Gecersiz GitHub token temizlenemedi: {e}", level="WARNING")
+
+        return True
 
     def _format_request_error(self, error):
         if isinstance(error, HTTPError):
@@ -180,7 +199,9 @@ class Updater:
         try:
             with urlopen(req, timeout=timeout) as resp:
                 return resp.read().decode("utf-8", errors="ignore")
-        except HTTPError:
+        except HTTPError as error:
+            if error.code == 401 and self._clear_invalid_public_token():
+                return self._read_url_text(url, accept=accept, timeout=timeout)
             raise
         except URLError as error:
             if os.name == "nt" and self._is_ssl_verification_error(error):
@@ -298,12 +319,21 @@ class Updater:
         self.log(f"Indirme basliyor: {file_name}")
         file_path = destination_path or self._default_download_path(file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        try:
+
+        def _download_once():
             req = Request(browser_download_url, headers=self._headers())
             with urlopen(req, timeout=60) as resp:
-                data = resp.read()
+                return resp.read()
+
+        try:
+            data = _download_once()
         except (URLError, HTTPError) as e:
-            if isinstance(e, URLError) and os.name == "nt" and self._is_ssl_verification_error(e):
+            if isinstance(e, HTTPError) and e.code == 401 and self._clear_invalid_public_token():
+                try:
+                    data = _download_once()
+                except Exception as retry_error:
+                    raise RuntimeError(f"Indirme basarisiz: {retry_error}") from retry_error
+            elif isinstance(e, URLError) and os.name == "nt" and self._is_ssl_verification_error(e):
                 self.log(
                     "Python SSL dogrulamasi basarisiz oldu; indirme Windows ag katmani ile tekrar deneniyor.",
                     level="WARNING",
@@ -316,7 +346,8 @@ class Updater:
                     raise RuntimeError(
                         f"Indirme basarisiz: {self._format_request_error(e)} / PowerShell fallback: {fallback_error}"
                     ) from e
-            raise RuntimeError(f"Indirme basarisiz: {self._format_request_error(e)}") from e
+            else:
+                raise RuntimeError(f"Indirme basarisiz: {self._format_request_error(e)}") from e
         except Exception as e:
             raise RuntimeError(f"Indirme basarisiz: {e}") from e
 

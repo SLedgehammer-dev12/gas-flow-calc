@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.9"
+APP_VERSION = "6.1.10"
 
 
 RELEASE_NOTES = {
@@ -132,6 +132,18 @@ RELEASE_NOTES = {
 - The UI now enables only the user inputs required by the selected calculation target.
 - Maximum-length calculations now normalize standard volumetric and mass-flow inputs consistently, fixing erroneous 0.00 m results.
 - New regression tests were added for both calculation logic and UI behavior.""",
+    },
+    "6.1.10": {
+        "tr": """6.1.10 ile gelen baslica yenilikler:
+
+- Public GitHub repo kullanilirken yerelde sakli gecersiz token varsa updater artik bunu temizleyip kimliksiz olarak tekrar deniyor.
+- Bu sayede eski private-repo gecisinden kalan tokenlar otomatik guncelleme akisini bozmaz hale getirildi.
+- Public-repo token fallback davranisi icin regresyon testi eklendi.""",
+        "en": """Highlights introduced in 6.1.10:
+
+- When the app talks to a public GitHub repo and encounters a stale local token, the updater now clears it and retries anonymously.
+- This prevents leftover tokens from older private-repo setups from breaking the automatic update flow.
+- A regression test was added for the public-repo token fallback behavior.""",
     },
 }
 
