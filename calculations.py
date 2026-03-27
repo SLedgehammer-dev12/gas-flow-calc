@@ -85,6 +85,12 @@ class GasFlowCalculator:
     def is_mass_flow_unit(self, flow_unit):
         return str(flow_unit).strip().casefold() == "kg/s"
 
+    def calculate_mass_flow_rate(self, flow_rate, flow_unit, standard_density):
+        """Normalize any supported flow input to kg/s."""
+        if self.is_mass_flow_unit(flow_unit):
+            return float(flow_rate)
+        return (float(flow_rate) / 3600.0) * standard_density
+
     def mass_to_mole_fraction(self, mass_fractions):
         total_moles = 0.0; moles = {}
         for gas, mass_frac in mass_fractions.items():
@@ -412,7 +418,6 @@ class GasFlowCalculator:
         """
         P_in = inputs['P_in']; T = inputs['T']; mole_fractions = inputs['mole_fractions']
         library_choice = inputs['library_choice']; flow_val = inputs['flow_rate']; flow_unit = inputs['flow_unit']
-        flow_unit = "kg/s" if self.is_mass_flow_unit(flow_unit) else "SmÂ³/h"
         D_inner = inputs['D_inner']; L = inputs['L']; roughness = inputs['roughness']; total_k = inputs['total_k']
         flow_property = inputs['flow_property']
 
@@ -424,27 +429,9 @@ class GasFlowCalculator:
         if library_choice == "CoolProp (High Accuracy EOS)":
             cp_state = self.create_coolprop_state(mole_fractions)
 
-        # Kütlesel Debi Hesabı
-        if flow_unit == "Sm³/h":
-            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
-        else: # kg/s
-            m_dot = flow_val
-
-        if self.is_mass_flow_unit(flow_unit):
-            m_dot = flow_val
-        else:
-            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
-
-        if self.is_mass_flow_unit(flow_unit):
-            m_dot = flow_val
-        else:
-            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
+        m_dot = self.calculate_mass_flow_rate(flow_val, flow_unit, gas_props_in['standard_density'])
 
         # Çapı metreye çevir (Girdi mm)
-        if self.is_mass_flow_unit(flow_unit):
-            m_dot = flow_val
-        else:
-            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
 
         D_m = D_inner / 1000.0
         A = math.pi * (D_m ** 2) / 4
@@ -564,15 +551,7 @@ class GasFlowCalculator:
         if abs(P_in - P_out_target) < 100: # 1 mbar farktan az ise 0 kabul et
              # Temel debi hesabı için yine de özelliklere ihtiyaç var
              gas_props_in = self.calculate_thermo_properties(P_in, inputs['T'], inputs['mole_fractions'], inputs['library_choice'])
-             if inputs['flow_unit'] == "Sm³/h":
-                m_dot = (inputs['flow_rate'] / 3600) * gas_props_in['standard_density']
-             else:
-                m_dot = inputs['flow_rate']
-
-             if self.is_mass_flow_unit(inputs['flow_unit']):
-                m_dot = inputs['flow_rate']
-             else:
-                m_dot = (inputs['flow_rate'] / 3600) * gas_props_in['standard_density']
+             m_dot = self.calculate_mass_flow_rate(inputs['flow_rate'], inputs['flow_unit'], gas_props_in['standard_density'])
                 
              return {
                 "L_max": 0, 
@@ -584,7 +563,6 @@ class GasFlowCalculator:
         
         T = inputs['T']; mole_fractions = inputs['mole_fractions']
         library_choice = inputs['library_choice']; flow_val = inputs['flow_rate']; flow_unit = inputs['flow_unit']
-        flow_unit = "kg/s" if self.is_mass_flow_unit(flow_unit) else "SmÂ³/h"
         D_inner = inputs['D_inner']; roughness = inputs['roughness']; total_k = inputs['total_k']
         flow_property = inputs['flow_property']
 
@@ -597,10 +575,7 @@ class GasFlowCalculator:
         if library_choice == "CoolProp (High Accuracy EOS)":
             cp_state = self.create_coolprop_state(mole_fractions)
         
-        if flow_unit == "Sm³/h":
-            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
-        else:
-            m_dot = flow_val
+        m_dot = self.calculate_mass_flow_rate(flow_val, flow_unit, gas_props_in['standard_density'])
 
         # Çapı metreye çevir
         D_m = D_inner / 1000.0
@@ -626,38 +601,59 @@ class GasFlowCalculator:
             Re_final = Re; f_final = f; delta_p_pipe = available_delta_p_pipe
 
         else: # Sıkıştırılabilir (Binary Search)
-            L_low, L_high = 0.001, 1000000.0 # 1000 km üst limit
-            
-            for _ in range(50): # Binary Search İterasyonu
-                L_mid = (L_low + L_high) / 2
-                
-                P1 = P_in; P2 = P1 * 0.9
-                current_delta_p_total = 0
-                
+            def solve_outlet_pressure(length):
+                P1 = P_in
+                P2 = P1 if length <= 0 else P1 * 0.9
+                Re = 0.0; f = 0.0; dp_pipe_local = 0.0; dp_fit_local = 0.0
+
                 for _ in range(20):
                     P_avg = (P1 + P2) / 2
                     props = self.calculate_thermo_properties(P_avg, T, mole_fractions, library_choice, cp_state)
                     rho = props['density']; mu = props['viscosity']; v = m_dot / (rho * A)
                     Re = (rho * v * D_m) / mu; f = self.get_friction_factor(Re, relative_roughness)
-                    
-                    dp_pipe = f * (L_mid / D_m) * (rho * v**2) / 2
-                    dp_fit = total_k * (rho * v**2) / 2
-                    current_delta_p_total = dp_pipe + dp_fit
-                    
+
+                    dp_pipe_local = f * (length / D_m) * (rho * v**2) / 2
+                    dp_fit_local = total_k * (rho * v**2) / 2
+                    current_delta_p_total = dp_pipe_local + dp_fit_local
+
                     P2_new = max(MIN_PRESSURE_PA, P1 - current_delta_p_total)
-                    if abs(P2_new - P2) < 100: 
-                        P2 = P2_new; break
+                    if abs(P2_new - P2) < 100:
+                        P2 = P2_new
+                        break
                     P2 = P2_new
-                
+
+                return P2, Re, f, dp_pipe_local, dp_fit_local
+
+            P_min_length, Re_zero, f_zero, _, dp_fit_zero = solve_outlet_pressure(0.0)
+            if P_min_length < P_out_target:
+                return {
+                    "L_max": 0,
+                    "Re": Re_zero,
+                    "f": f_zero,
+                    "delta_p_pipe": 0,
+                    "delta_p_fittings": dp_fit_zero,
+                    "m_dot": m_dot,
+                    "error": "Sifir boru uzunlugunda bile fitting kayiplari hedef cikis basincini saglamiyor."
+                }
+
+            L_low, L_high = 0.0, 1000000.0 # 1000 km üst limit
+            best_Re = Re_zero; best_f = f_zero; best_dp_pipe = 0.0; best_dp_fit = dp_fit_zero
+
+            for _ in range(50): # Binary Search İterasyonu
+                L_mid = (L_low + L_high) / 2
+                P2, Re, f, dp_pipe_mid, dp_fit_mid = solve_outlet_pressure(L_mid)
+
                 if P2 < P_out_target: # Basınç çok düştü, L çok uzun
                     L_high = L_mid
                 else: # Basınç hala yüksek, L daha uzun olabilir
                     L_low = L_mid
-                
+                    best_Re = Re; best_f = f; best_dp_pipe = dp_pipe_mid; best_dp_fit = dp_fit_mid
+
                 if abs(L_high - L_low) < 0.1: break
-            
+
             L_max = L_low
-            Re_final = Re; f_final = f
+            Re_final = best_Re; f_final = best_f
+            delta_p_pipe = best_dp_pipe; delta_p_fittings = best_dp_fit
 
         return {
             "L_max": L_max, 
@@ -671,7 +667,6 @@ class GasFlowCalculator:
         """Minimum çap hesabı ve ticari boru seçimi (İteratif ve Karşılaştırmalı)."""
         P_in = inputs['P_in']; T = inputs['T']; mole_fractions = inputs['mole_fractions']
         library_choice = inputs['library_choice']; flow_val = inputs['flow_rate']; flow_unit = inputs['flow_unit']
-        flow_unit = "kg/s" if self.is_mass_flow_unit(flow_unit) else "SmÂ³/h"
         max_vel = inputs['max_velocity']
         
         # Yeni Girdiler
@@ -692,12 +687,8 @@ class GasFlowCalculator:
         gas_props_in = self.calculate_thermo_properties(P_in, T, mole_fractions, library_choice)
         rho_in = gas_props_in['density']
         
-        if flow_unit == "Sm³/h":
-            m_dot = (flow_val / 3600) * gas_props_in['standard_density']
-            flow_rate_actual_in = m_dot / rho_in
-        else: # kg/s
-            m_dot = flow_val
-            flow_rate_actual_in = m_dot / rho_in
+        m_dot = self.calculate_mass_flow_rate(flow_val, flow_unit, gas_props_in['standard_density'])
+        flow_rate_actual_in = m_dot / rho_in
 
         if max_vel <= 0: raise ValueError("Maksimum hız pozitif olmalı.")
         

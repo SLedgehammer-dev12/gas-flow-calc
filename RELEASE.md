@@ -1,29 +1,40 @@
 # RELEASE
 
-## Release Checklist
+## Patch Release Checklist
+
+### Hedef patch
+
+- Onerilen patch: `v6.1.9`
+- Kapsam:
+  - `Sm3/h` debi donusum regresyon duzeltmesi
+  - maksimum uzunluk 0.00 m kok neden duzeltmesi
+  - fitting-only imkansiz senaryo hata mesaji
 
 ### Versioning
 
-- Update `APP_VERSION` in `release_metadata.py`
-- Add release notes in `release_metadata.py`
-- Update `CHANGELOG.md`
+- `release_metadata.py` icinde surumu guncelle
+- `CHANGELOG.md` icine patch notlarini ekle
+- Gerekirse paket adi ve splash/version metinlerini kontrol et
 
 ### Validation
 
-- Run `python -m unittest discover -s tests -v`
-- Launch `python main.py`
-- Check startup default target and segmented button state
-- Check updater behavior on both direct and corporate-style networks if possible
+- `python -m unittest discover -s tests -v`
+- `python main.py`
+- Asagidaki manuel senaryolari dogrula:
+  - ayni fiziksel debi icin `Sm3/h` ve `kg/s` ile esit sonuclar
+  - maksimum uzunlukta pozitif, mantikli bir sonuc
+  - fitting kaybi cok yuksekse acik hata mesaji
+  - varsayilan hedef ve segmented button durumu
 
 ### Packaging
 
-- Run `pyinstaller "Gas Flow Calc V6.1.spec"`
-- Verify output executable name includes the new version
-- Smoke-test the packaged `.exe`
+- `pyinstaller "Gas Flow Calc V6.1.spec"`
+- cikti `.exe` adini ve surum bilgisini dogrula
+- paketli surumde hizli smoke test yap
 
 ### Publishing
 
-- Commit the release changes
-- Tag the release as `v6.1.7`
-- Push `main` and the tag
-- Publish the GitHub release with the matching notes
+- commit mesajinda patch kapsamini acik yaz
+- release tag olustur
+- release notlarinda bu hata icin kullaniciya etkisini belirt:
+  - maksimum uzunluk artik volumetrik debiyi dogru yorumluyor

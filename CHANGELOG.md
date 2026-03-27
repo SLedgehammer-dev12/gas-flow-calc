@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.1.9
+
+- Added an automatic startup update check that offers the GitHub release download flow when a newer version is available.
+- Enabled and disabled user input fields dynamically so each calculation target only leaves the required inputs active.
+- Fixed maximum-length calculations so standard volumetric flow is normalized consistently and no longer collapses into incorrect `0.00 m` results.
+- Added regression coverage for the updated max-length logic, startup update prompt, and target-based UI state handling.
+
 ## 6.1.8
 
 - Added a startup password gate so the program opens only after a valid access password is entered.

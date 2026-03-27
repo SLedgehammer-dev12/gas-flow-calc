@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.8"
+APP_VERSION = "6.1.9"
 
 
 RELEASE_NOTES = {
@@ -118,6 +118,20 @@ RELEASE_NOTES = {
 - A separate admin password-management flow was added; the admin can change both the admin password and the program access password.
 - On first setup, both the default admin password and the default program access password start as 123456.
 - Report formatting helpers were moved into a separate module to reduce controller complexity.""",
+    },
+    "6.1.9": {
+        "tr": """6.1.9 ile gelen baslica yenilikler:
+
+- Uygulama acilisinda otomatik GitHub release kontrolu yapiliyor ve yeni surum varsa indirme akisi teklif ediliyor.
+- Hesaplama hedefi secimine gore sadece gerekli kullanici giris alanlari aktif kalacak sekilde arayuz davranisi duzenlendi.
+- Maksimum uzunluk hesabinda standart hacimsel debi ile kutlesel debi yorumlamasi birlestirilerek 0.00 m gorunen hatali sonuclar giderildi.
+- Hesap motoru ve UI davranislari icin yeni regresyon testleri eklendi.""",
+        "en": """Highlights introduced in 6.1.9:
+
+- The app now performs an automatic GitHub release check at startup and offers the download flow when a new version is available.
+- The UI now enables only the user inputs required by the selected calculation target.
+- Maximum-length calculations now normalize standard volumetric and mass-flow inputs consistently, fixing erroneous 0.00 m results.
+- New regression tests were added for both calculation logic and UI behavior.""",
     },
 }
 

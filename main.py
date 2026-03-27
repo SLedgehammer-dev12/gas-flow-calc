@@ -64,6 +64,7 @@ class GasFlowCalculatorApp:
         # Güncelleme yöneticisi
         self.updater = Updater(self.log_message)
         self.last_download_path = None
+        self._startup_update_check_done = False
 
         # Değişkenler
         self.gas_components = {}
@@ -113,8 +114,8 @@ class GasFlowCalculatorApp:
         
         self.log_message(f"{t('msg_program_started')}: V{APP_VERSION}")
         self.log_message(f"{t('msg_version')}: {APP_VERSION}")
-        # Arka planda sessiz güncelleme kontrolü
-        self.root.after(500, self.silent_update_check)
+        # Açılışta otomatik güncelleme kontrolü
+        self.root.after(1500, self.silent_update_check)
         
         # Güncelleme notlarını göster
         self.check_changelog()
@@ -975,6 +976,62 @@ class GasFlowCalculatorApp:
             self.smys_var.set(smys)
             self.ent_smys.config(state="disabled")
 
+    def _set_widget_state(self, widget, enabled, enabled_state=None):
+        desired_state = "disabled"
+        if enabled:
+            if enabled_state:
+                desired_state = enabled_state
+            elif isinstance(widget, ttk.Combobox):
+                desired_state = "readonly"
+            else:
+                desired_state = "normal"
+        widget.config(state=desired_state)
+
+    def _sync_pipe_geometry_states(self, geometry_enabled):
+        self._set_widget_state(self.nps_combo, geometry_enabled, enabled_state="readonly")
+        self._set_widget_state(self.schedule_combo, geometry_enabled, enabled_state="readonly")
+
+        if not geometry_enabled:
+            self.ent_diam.config(state="disabled")
+            self.ent_thick.config(state="disabled")
+            return
+
+        if self.nps_combo.get():
+            self.ent_diam.config(state="readonly")
+            self.ent_thick.config(state="readonly")
+        else:
+            self.ent_diam.config(state="normal")
+            self.ent_thick.config(state="normal")
+
+    def _apply_target_input_states(self):
+        target = self.calc_target.get()
+        is_pressure_drop = target == t("target_pressure_drop")
+        is_max_length = target == t("target_max_length")
+        is_min_diameter = target == t("target_min_diameter")
+        needs_length = is_pressure_drop or (
+            is_min_diameter and self.flow_type.get() == t("flow_compressible")
+        )
+
+        self._set_widget_state(self.ent_len, needs_length)
+        self._set_widget_state(self.ent_target_p, is_max_length)
+        self._set_widget_state(self.target_p_unit, is_max_length, enabled_state="readonly")
+        self._set_widget_state(self.ent_max_vel, is_min_diameter)
+
+        self._sync_pipe_geometry_states(is_pressure_drop or is_max_length)
+
+        self._set_widget_state(self.ent_p_design, is_min_diameter)
+        self._set_widget_state(self.p_design_unit, is_min_diameter, enabled_state="readonly")
+        self._set_widget_state(self.ent_factor_f, is_min_diameter)
+        self._set_widget_state(self.ent_factor_e, is_min_diameter)
+        self._set_widget_state(self.ent_factor_t, is_min_diameter)
+        self._set_widget_state(self.chk_opt_weight, is_min_diameter)
+        self._set_widget_state(self.chk_fast_calc, is_min_diameter)
+
+        if is_min_diameter:
+            self._on_material_changed()
+        else:
+            self.ent_smys.config(state="disabled")
+
     def update_ui_visibility(self, event=None):
         target = self.calc_target.get()
         
@@ -1002,6 +1059,8 @@ class GasFlowCalculatorApp:
             # Sıkıştırılabilir akış ise Uzunluk da gerekli
             if self.flow_type.get() == t("flow_compressible"):
                 self.lbl_len.grid(row=0, column=6, padx=(15, 5)); self.ent_len.grid(row=0, column=7)
+
+        self._apply_target_input_states()
 
     def save_report(self):
         path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt")])
@@ -1760,7 +1819,25 @@ class GasFlowCalculatorApp:
         return bool(self.updater.github_token)
 
     # --- Güncelleme İşlevleri ---
+    def _prompt_for_update(self, info):
+        if not info or not info.get("has_update"):
+            return
+
+        body = info.get("body", "")
+        preview = (body[:500] + ("..." if len(body) > 500 else "")) if body else "N/A"
+        msg = (
+            f"{t('update_new_version')}: {info['latest_version']}\n\n"
+            f"{t('update_changes')}: {preview}\n\n"
+            f"{t('update_download_ask')}"
+        )
+        if messagebox.askyesno(t("update_available"), msg):
+            self.download_latest_release()
+
     def silent_update_check(self):
+        if self._startup_update_check_done:
+            return
+        self._startup_update_check_done = True
+
         try:
             if getattr(self.updater, "private_repo", False) and not self.updater.github_token:
                 self.log_message(t("update_private_repo_skip"), level="INFO")
@@ -1768,6 +1845,7 @@ class GasFlowCalculatorApp:
             update_info = self.updater.check_for_update(current_version=APP_VERSION)
             if update_info and update_info.get("has_update"):
                 self.log_message(f"{t('update_new_version')}: {update_info['latest_version']}")
+                self.root.after(0, lambda info=update_info: self._prompt_for_update(info))
         except Exception as e:
             self.log_message(f"Silent update check failed: {e}", level="WARNING")
 
@@ -1781,15 +1859,7 @@ class GasFlowCalculatorApp:
                 messagebox.showinfo(t("dialog_update"), t("update_config_error"))
                 return
             if info["has_update"]:
-                body = info.get('body', '')
-                preview = (body[:500] + ('...' if len(body) > 500 else '')) if body else 'N/A'
-                msg = (
-                    f"{t('update_new_version')}: {info['latest_version']}\n\n"
-                    f"{t('update_changes')}: {preview}\n\n"
-                    f"{t('update_download_ask')}"
-                )
-                if messagebox.askyesno(t("update_available"), msg):
-                    self.download_latest_release()
+                self._prompt_for_update(info)
             else:
                 messagebox.showinfo(t("dialog_update"), t("update_up_to_date"))
         except Exception as e:
