@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.1.8
+
+- Added a startup password gate so the program opens only after a valid access password is entered.
+- Added admin-only password management for both the admin password and the program access password.
+- Set the initial default admin password and program access password to `123456`.
+- Moved text-report formatting into a dedicated helper module to continue reducing `main.py` responsibility.
+
 ## 6.1.7
 
 - Fixed the startup calculation-target mismatch so the active segmented button matches the default `Minimum Diameter` mode.

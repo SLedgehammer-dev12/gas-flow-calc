@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.7"
+APP_VERSION = "6.1.8"
 
 
 RELEASE_NOTES = {
@@ -104,6 +104,20 @@ RELEASE_NOTES = {
 - Project loading and first-launch behavior now consistently default to Minimum Diameter.
 - SSL certificate verification failures in the GitHub updater now produce clearer diagnostics.
 - On Windows, update requests are retried through the PowerShell network stack when Python rejects the certificate chain.""",
+    },
+    "6.1.8": {
+        "tr": """6.1.8 ile gelen baslica yenilikler:
+
+- Program acilisina parola dogrulamasi eklendi; uygulama ancak dogru giris sifresi ile aciliyor.
+- Admin rolu icin ayri parola yonetimi eklendi; admin hem kendi sifresini hem de program giris sifresini degistirebiliyor.
+- Ilk kurulumda varsayilan admin sifresi ve program giris sifresi 123456 olarak baslatiliyor.
+- Rapor olusturma yardimcilari ayrik bir module tasinarak ana pencere denetleyicisi sadelelestirildi.""",
+        "en": """Highlights introduced in 6.1.8:
+
+- Password verification was added to startup; the application now opens only after a valid access password is entered.
+- A separate admin password-management flow was added; the admin can change both the admin password and the program access password.
+- On first setup, both the default admin password and the default program access password start as 123456.
+- Report formatting helpers were moved into a separate module to reduce controller complexity.""",
     },
 }
 

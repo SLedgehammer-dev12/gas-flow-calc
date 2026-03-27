@@ -11,10 +11,12 @@ import webbrowser
 import sys
 
 # Modüler importlar
+from auth import load_auth_config, prompt_for_admin_password, prompt_for_program_access, show_password_management_dialog
 from app_paths import get_config_path, get_install_dir, get_session_file_path, load_config, save_config
 from release_metadata import APP_VERSION, get_release_notes, get_release_notes_title, get_versioned_exe_name
 from data import COOLPROP_GASES, PIPE_MATERIALS, PIPE_ROUGHNESS, FITTING_K_FACTORS, ASME_B36_10M_DATA, GAS_PRESETS
 from calculations import GasFlowCalculator
+from reporting import format_max_length_report, format_min_diameter_report, format_pressure_drop_report
 from updater import Updater
 from translations import t, t_fitting, set_language, get_language, get_fitting_name_tr
 from ui.widgets import ToolTip, ValidationHelper, ValidatedEntry
@@ -205,6 +207,13 @@ class GasFlowCalculatorApp:
         lang_menu.add_command(label="🇬🇧 " + t("lang_english"), command=lambda: self.change_language("en"))
         
         # Yardım Menüsü
+        admin_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label=t("menu_admin", "Admin"), menu=admin_menu)
+        admin_menu.add_command(
+            label=t("menu_password_management", "Parola Yonetimi"),
+            command=self.open_password_management,
+        )
+
         help_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label=t("menu_help"), menu=help_menu)
         help_menu.add_command(label=t("menu_user_guide"), command=self.show_user_guide)
@@ -275,6 +284,21 @@ class GasFlowCalculatorApp:
     
     def show_program_details(self):
         show_program_details(self.root)
+
+    def open_password_management(self):
+        if not prompt_for_admin_password(self.root):
+            self.log_message(
+                t("auth_admin_auth_failed", "Admin dogrulamasi basarisiz.", "Admin verification failed."),
+                level="WARNING",
+            )
+            return
+
+        if show_password_management_dialog(self.root):
+            load_auth_config()
+            self.log_message(
+                t("auth_passwords_updated", "Parolalar guncellendi.", "Passwords updated."),
+                level="INFO",
+            )
 
     def setup_styles(self):
         style = ttk.Style()
@@ -1365,13 +1389,13 @@ class GasFlowCalculatorApp:
             
             if target == t("target_pressure_drop"):
                 result = self.calculator.calculate_pressure_drop(inputs)
-                report = self.format_pressure_drop_report(inputs, result)
+                report = format_pressure_drop_report(inputs, result)
             elif target == t("target_max_length"):
                 result = self.calculator.calculate_max_length(inputs)
-                report = self.format_max_length_report(inputs, result)
+                report = format_max_length_report(inputs, result)
             elif target == t("target_min_diameter"):
                 result = self.calculator.calculate_min_diameter(inputs)
-                report = self.format_min_diameter_report(inputs, result)
+                report = format_min_diameter_report(inputs, result)
             else:
                 report = "Bu özellik henüz V5 arayüzüne tam entegre edilmedi."
 
@@ -1835,5 +1859,11 @@ class GasFlowCalculatorApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.withdraw()
+    load_auth_config()
+    if not prompt_for_program_access(root):
+        root.destroy()
+        raise SystemExit(0)
     app = GasFlowCalculatorApp(root)
+    root.deiconify()
     root.mainloop()
