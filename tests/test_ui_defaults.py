@@ -29,6 +29,14 @@ class TestUIDefaults(unittest.TestCase):
             expected_style = "SegBtnActive.TButton" if target == expected_target else "SegBtn.TButton"
             self.assertEqual(str(button.cget("style")), expected_style)
 
+    def test_gas_list_shows_at_least_six_rows(self):
+        self.assertGreaterEqual(int(self.app.gas_list_canvas.cget("height")), 160)
+
+    def test_theme_switch_updates_theme_state(self):
+        self.app.apply_theme("dark", persist=False)
+        self.assertEqual(self.app.ui_theme.get(), "dark")
+        self.assertEqual(self.app._colors["bg"], "#16202a")
+
     def test_min_diameter_mode_only_keeps_required_inputs_active(self):
         self.assertEqual(str(self.app.ent_max_vel.cget("state")), "normal")
         self.assertEqual(str(self.app.ent_target_p.cget("state")), "disabled")

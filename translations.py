@@ -26,6 +26,10 @@ TRANSLATIONS = {
         "menu_language": "Dil",
         "lang_turkish": "Türkçe",
         "lang_english": "English",
+        "menu_view": "Görünüm",
+        "theme_light": "Açık Tema",
+        "theme_dark": "Koyu Tema",
+        "theme_contrast": "Yüksek Kontrast",
         
         # Tabs
         "tab_calculation": "Hesaplama",
@@ -419,6 +423,10 @@ REFERANSLAR:
         "menu_language": "Language",
         "lang_turkish": "Türkçe",
         "lang_english": "English",
+        "menu_view": "View",
+        "theme_light": "Light Theme",
+        "theme_dark": "Dark Theme",
+        "theme_contrast": "High Contrast",
         
         # Tabs
         "tab_calculation": "Calculation",

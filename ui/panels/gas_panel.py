@@ -52,7 +52,7 @@ class GasPanel(ttk.LabelFrame):
         list_frame.pack(fill="x", pady=(6, 0))
 
         self.app.gas_list_canvas = tk.Canvas(
-            list_frame, height=118, highlightthickness=0,
+            list_frame, height=168, highlightthickness=0,
             bg="#ffffff")
         scrollbar = ttk.Scrollbar(
             list_frame, orient="vertical",

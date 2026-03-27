@@ -48,6 +48,67 @@ def load_language_from_config():
 
 load_language_from_config()
 
+# UI themes
+THEME_PRESETS = {
+    "light": {
+        "bg": "#f0f3f8",
+        "card": "#ffffff",
+        "accent": "#1a237e",
+        "accent2": "#283593",
+        "accent_light": "#e8eaf6",
+        "txt_dark": "#1c2032",
+        "txt_mid": "#455a64",
+        "txt_light": "#78909c",
+        "success": "#2e7d32",
+        "warn": "#e65100",
+        "err": "#c62828",
+        "tab_idle": "#d1d8e6",
+        "button_bg": "#dde3ef",
+        "entry_focus": "#eef2ff",
+        "scrollbar": "#ced4da",
+        "border": "#dee2e6",
+        "gas_canvas": "#ffffff",
+    },
+    "dark": {
+        "bg": "#16202a",
+        "card": "#22303c",
+        "accent": "#7fb3ff",
+        "accent2": "#4f87d9",
+        "accent_light": "#2f4253",
+        "txt_dark": "#f3f7fb",
+        "txt_mid": "#c1d0de",
+        "txt_light": "#91a4b7",
+        "success": "#6bcf7d",
+        "warn": "#ffb86b",
+        "err": "#ff7a7a",
+        "tab_idle": "#314252",
+        "button_bg": "#304150",
+        "entry_focus": "#31485f",
+        "scrollbar": "#45596b",
+        "border": "#304150",
+        "gas_canvas": "#22303c",
+    },
+    "contrast": {
+        "bg": "#fffdf5",
+        "card": "#fffefb",
+        "accent": "#0b3d2e",
+        "accent2": "#135844",
+        "accent_light": "#dcefe7",
+        "txt_dark": "#111111",
+        "txt_mid": "#2f2f2f",
+        "txt_light": "#5d5d5d",
+        "success": "#136f3a",
+        "warn": "#b85c00",
+        "err": "#a61b1b",
+        "tab_idle": "#e5ece8",
+        "button_bg": "#e8efe8",
+        "entry_focus": "#f4faf7",
+        "scrollbar": "#c9d3cc",
+        "border": "#d6ddd8",
+        "gas_canvas": "#fffefb",
+    },
+}
+
 # --- Deleted ToolTip, ValidationHelper, ValidatedEntry (Moved to ui.widgets) ---
 
 
@@ -65,6 +126,7 @@ class GasFlowCalculatorApp:
         self.updater = Updater(self.log_message)
         self.last_download_path = None
         self._startup_update_check_done = False
+        self.ui_theme = tk.StringVar(value=load_app_config().get("ui_theme", "light"))
 
         # Değişkenler
         self.gas_components = {}
@@ -95,6 +157,7 @@ class GasFlowCalculatorApp:
         
         # Menü Çubuğu
         self.create_menu()
+        self.apply_theme(self.ui_theme.get(), persist=False)
         
         # Şema Çizicisi (Bağlamaları kur)
         self.schematic_drawer = SchematicDrawer(self) 
@@ -206,6 +269,27 @@ class GasFlowCalculatorApp:
         menubar.add_cascade(label=t("menu_language"), menu=lang_menu)
         lang_menu.add_command(label="🇹🇷 " + t("lang_turkish"), command=lambda: self.change_language("tr"))
         lang_menu.add_command(label="🇬🇧 " + t("lang_english"), command=lambda: self.change_language("en"))
+
+        view_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label=t("menu_view"), menu=view_menu)
+        view_menu.add_radiobutton(
+            label=t("theme_light"),
+            variable=self.ui_theme,
+            value="light",
+            command=lambda: self.apply_theme("light"),
+        )
+        view_menu.add_radiobutton(
+            label=t("theme_dark"),
+            variable=self.ui_theme,
+            value="dark",
+            command=lambda: self.apply_theme("dark"),
+        )
+        view_menu.add_radiobutton(
+            label=t("theme_contrast"),
+            variable=self.ui_theme,
+            value="contrast",
+            command=lambda: self.apply_theme("contrast"),
+        )
         
         # Yardım Menüsü
         admin_menu = Menu(menubar, tearoff=0)
@@ -302,158 +386,81 @@ class GasFlowCalculatorApp:
             )
 
     def setup_styles(self):
-        style = ttk.Style()
-        style.theme_use('clam')
+        self.style = ttk.Style()
+        self.style.theme_use("clam")
+        self.apply_theme(self.ui_theme.get(), persist=False)
 
-        # ── Renk Sistemi ─────────────────────────────────────
-        BG          = "#f0f3f8"        # Ana arka plan (soğuk gri)
-        CARD        = "#ffffff"        # Panel / kart arka planı
-        ACCENT      = "#1a237e"        # Koyu lacivert ana vurgu rengi
-        ACCENT2     = "#283593"        # Biraz açık vurgu
-        ACCENT_LIGHT= "#e8eaf6"        # Açık lacivert (hover / highlight)
-        TXT_DARK    = "#1c2032"        # Koyu metin
-        TXT_MID     = "#455a64"        # Orta metin
-        TXT_LIGHT   = "#78909c"        # Açık metin / hint
-        SUCCESS     = "#2e7d32"
-        WARN        = "#e65100"
-        ERR         = "#c62828"
-        # ─────────────────────────────────────────────────────
+    def apply_theme(self, theme_name, persist=True):
+        theme = THEME_PRESETS.get(theme_name, THEME_PRESETS["light"])
+        self.ui_theme.set(theme_name if theme_name in THEME_PRESETS else "light")
+        style = getattr(self, "style", ttk.Style())
 
-        # Global
-        style.configure(".",
-                        background=BG,
-                        foreground=TXT_DARK,
-                        font=("Segoe UI", 10),
-                        focuscolor=ACCENT2)
-
-        # ── Frame'ler ──
-        style.configure("TFrame",  background=BG)
-        style.configure("Card.TFrame", background=CARD, relief="flat")
-
-        # ── LabelFrame (Panel Kartları) ──
-        style.configure("TLabelframe",
-                        background=CARD,
-                        relief="flat",
-                        borderwidth=1,
-                        bordercolor="#dee2e6")
-        style.configure("TLabelframe.Label",
-                        background=CARD,
-                        foreground=ACCENT,
-                        font=("Segoe UI", 10, "bold"))
-        style.configure("Bold.TLabelframe.Label",
-                        background=CARD,
-                        foreground=ACCENT,
-                        font=("Segoe UI", 10, "bold"))
-
-        # ── Notebook (Sekmeler) ──
-        style.configure("TNotebook",
-                        background=BG,
-                        tabmargins=[2, 5, 2, 0])
-        style.configure("TNotebook.Tab",
-                        background="#d1d8e6",
-                        foreground=TXT_MID,
-                        padding=[10, 5],
-                        font=("Segoe UI", 9))
-        style.map("TNotebook.Tab",
-                  background=[("selected", CARD)],
-                  foreground=[("selected", ACCENT)],
-                  font=[("selected", ("Segoe UI", 9, "bold"))])
-
-        # ── Butonlar ──
-        style.configure("TButton",
-                        font=("Segoe UI", 10),
-                        padding=[8, 5],
-                        background="#dde3ef",
-                        foreground=TXT_DARK,
-                        relief="flat")
-        style.map("TButton",
-                  background=[("active", ACCENT_LIGHT), ("pressed", "#c5cae9")])
-
-        # Seçim butonları (Hesaplama Hedefi)
-        style.configure("SegBtn.TButton",
-                        font=("Segoe UI", 9),
-                        padding=[8, 4],
-                        background="#dde3ef",
-                        foreground=TXT_MID,
-                        relief="flat")
-        style.map("SegBtn.TButton",
-                  background=[("active", ACCENT_LIGHT)])
-
-        style.configure("SegBtnActive.TButton",
-                        font=("Segoe UI", 9, "bold"),
-                        padding=[8, 4],
-                        background=ACCENT,
-                        foreground="#ffffff",
-                        relief="flat")
-        style.map("SegBtnActive.TButton",
-                  background=[("active", ACCENT2)])
-
-        # ── Label'lar ──
-        style.configure("TLabel",    background=CARD, foreground=TXT_DARK, font=("Segoe UI", 10))
-        style.configure("Header.TLabel",
-                        font=("Segoe UI", 14, "bold"),
-                        foreground=ACCENT,
-                        background=CARD)
-        style.configure("Sub.TLabel",
-                        font=("Segoe UI", 9),
-                        foreground=TXT_LIGHT,
-                        background=CARD)
-        style.configure("Hint.TLabel",
-                        font=("Segoe UI", 9, "italic"),
-                        foreground=TXT_LIGHT,
-                        background=CARD)
-
-        # ── Treeview ──
-        style.configure("Treeview",
-                        font=("Segoe UI", 9),
-                        rowheight=26,
-                        background=CARD,
-                        fieldbackground=CARD,
-                        foreground=TXT_DARK)
-        style.configure("Treeview.Heading",
-                        font=("Segoe UI", 9, "bold"),
-                        background=ACCENT_LIGHT,
-                        foreground=ACCENT)
-        style.map("Treeview",
-                  background=[("selected", ACCENT_LIGHT)],
-                  foreground=[("selected", ACCENT)])
-
-        # ── Entry (Giriş Kutusu) ──
-        style.configure("TEntry",
-                        padding=[4, 3],
-                        relief="flat",
-                        foreground=TXT_DARK)
-        style.map("TEntry",
-                  fieldbackground=[("focus", "#eef2ff")])
-
-        # ── Combobox ──
+        style.configure(".", background=theme["bg"], foreground=theme["txt_dark"], font=("Segoe UI", 10), focuscolor=theme["accent2"])
+        style.configure("TFrame", background=theme["bg"])
+        style.configure("Card.TFrame", background=theme["card"], relief="flat")
+        style.configure("TLabelframe", background=theme["card"], relief="flat", borderwidth=1, bordercolor=theme["border"])
+        style.configure("TLabelframe.Label", background=theme["card"], foreground=theme["accent"], font=("Segoe UI", 10, "bold"))
+        style.configure("Bold.TLabelframe.Label", background=theme["card"], foreground=theme["accent"], font=("Segoe UI", 10, "bold"))
+        style.configure("TNotebook", background=theme["bg"], tabmargins=[2, 5, 2, 0])
+        style.configure("TNotebook.Tab", background=theme["tab_idle"], foreground=theme["txt_mid"], padding=[10, 5], font=("Segoe UI", 9))
+        style.map("TNotebook.Tab", background=[("selected", theme["card"])], foreground=[("selected", theme["accent"])], font=[("selected", ("Segoe UI", 9, "bold"))])
+        style.configure("TButton", font=("Segoe UI", 10), padding=[8, 5], background=theme["button_bg"], foreground=theme["txt_dark"], relief="flat")
+        style.map("TButton", background=[("active", theme["accent_light"]), ("pressed", theme["tab_idle"])])
+        style.configure("SegBtn.TButton", font=("Segoe UI", 9), padding=[8, 4], background=theme["button_bg"], foreground=theme["txt_mid"], relief="flat")
+        style.map("SegBtn.TButton", background=[("active", theme["accent_light"])])
+        style.configure("SegBtnActive.TButton", font=("Segoe UI", 9, "bold"), padding=[8, 4], background=theme["accent"], foreground="#ffffff", relief="flat")
+        style.map("SegBtnActive.TButton", background=[("active", theme["accent2"])])
+        style.configure("TLabel", background=theme["card"], foreground=theme["txt_dark"], font=("Segoe UI", 10))
+        style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"), foreground=theme["accent"], background=theme["card"])
+        style.configure("Sub.TLabel", font=("Segoe UI", 9), foreground=theme["txt_light"], background=theme["card"])
+        style.configure("Hint.TLabel", font=("Segoe UI", 9, "italic"), foreground=theme["txt_light"], background=theme["card"])
+        style.configure("Treeview", font=("Segoe UI", 9), rowheight=26, background=theme["card"], fieldbackground=theme["card"], foreground=theme["txt_dark"])
+        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background=theme["accent_light"], foreground=theme["accent"])
+        style.map("Treeview", background=[("selected", theme["accent_light"])], foreground=[("selected", theme["accent"])])
+        style.configure("TEntry", padding=[4, 3], relief="flat", foreground=theme["txt_dark"])
+        style.map("TEntry", fieldbackground=[("focus", theme["entry_focus"])])
         style.configure("TCombobox", padding=[4, 3], relief="flat")
+        style.configure("TScrollbar", background=theme["scrollbar"], troughcolor=theme["card"], relief="flat")
+        style.map("TScrollbar", background=[("active", theme["accent_light"])])
 
-        # ── Scrollbar ──
-        style.configure("TScrollbar", background="#ced4da", troughcolor=CARD, relief="flat")
-        style.map("TScrollbar", background=[("active", ACCENT_LIGHT)])
+        self.root.configure(bg=theme["bg"])
+        self._colors = theme
+        self._refresh_theme_surfaces()
 
-        # Root arka planı
-        self.root.configure(bg=BG)
+        if persist:
+            cfg = load_app_config()
+            cfg["ui_theme"] = self.ui_theme.get()
+            save_app_config(cfg)
 
-        # Paylaşımlı renk sabitlerini sakla (paneller kullanabilsin)
-        self._colors = {
-            'bg': BG, 'card': CARD, 'accent': ACCENT, 'accent2': ACCENT2,
-            'accent_light': ACCENT_LIGHT, 'txt_dark': TXT_DARK,
-            'txt_mid': TXT_MID, 'txt_light': TXT_LIGHT,
-            'success': SUCCESS, 'warn': WARN, 'err': ERR
-        }
+    def _refresh_theme_surfaces(self):
+        if not hasattr(self, "_colors"):
+            return
+
+        card = self._colors["card"]
+        txt_mid = self._colors["txt_mid"]
+
+        if hasattr(self, "gas_list_canvas"):
+            self.gas_list_canvas.configure(bg=self._colors["gas_canvas"])
+        if hasattr(self, "gas_total_label"):
+            self.gas_total_label.configure(bg=card, fg=txt_mid)
+        if hasattr(self, "gas_status_label"):
+            self.gas_status_label.configure(bg=card, fg=txt_mid)
+        if getattr(self, "report_text", None) is not None:
+            self.report_text.configure(background=card, foreground=self._colors["txt_dark"], insertbackground=self._colors["accent"])
+        if getattr(self, "schematic_canvas", None) is not None:
+            self.schematic_canvas.configure(bg=card)
 
     def validate_float(self, event):
         """Eski stil doğrulama - geriye uyumluluk için korundu."""
         widget = event.widget
+        default_bg = getattr(self, "_colors", THEME_PRESETS["light"])["card"]
         try:
             # Virgül desteği ekle
             value_str = widget.get()
             normalized = ValidationHelper.normalize_number(value_str)
             val = float(normalized)
             if val < 0: raise ValueError
-            widget.config(bg="white")
+            widget.config(bg=default_bg)
         except ValueError:
             widget.config(bg="#ffe6e6")  # Hata durumunda hafif kırmızı
 
@@ -485,18 +492,18 @@ class GasFlowCalculatorApp:
         widget = event.widget
         if isinstance(widget, ValidatedEntry):
             return  # ValidatedEntry kendi doğrulamasını yapar
-        
+        default_bg = getattr(self, "_colors", THEME_PRESETS["light"])["card"]
         try:
             value_str = widget.get()
             if not value_str.strip():
-                widget.config(bg="white")
+                widget.config(bg=default_bg)
                 return
             normalized = ValidationHelper.normalize_number(value_str)
             val = float(normalized)
             if val < 0:
                 widget.config(bg="#ffe6e6")
             else:
-                widget.config(bg="white")
+                widget.config(bg=default_bg)
         except ValueError:
             widget.config(bg="#ffe6e6")
 

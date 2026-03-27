@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.10"
+APP_VERSION = "6.1.11"
 
 
 RELEASE_NOTES = {
@@ -144,6 +144,22 @@ RELEASE_NOTES = {
 - When the app talks to a public GitHub repo and encounters a stale local token, the updater now clears it and retries anonymously.
 - This prevents leftover tokens from older private-repo setups from breaking the automatic update flow.
 - A regression test was added for the public-repo token fallback behavior.""",
+    },
+    "6.1.11": {
+        "tr": """6.1.11 ile gelen baslica yenilikler:
+
+- Arayuze yeni bir Gorunum menusu eklendi; acik, koyu ve yuksek kontrast tema secenekleri arasinda gecis yapilabiliyor.
+- Secilen tema yerel ayarlara kaydediliyor ve uygulama yeniden acildiginda korunuyor.
+- Gaz karisimi listesinin gorunen yuksekligi artirilarak ayni anda en az alti satirin izlenmesi kolaylastirildi.
+- Proses kosullari bolumu daha kompakt bir grid duzeni ile yeniden yerlesitirildi; etiket, giris ve birim alanlari artik birbirinden fazla uzaklasmiyor.
+- UI tarafina yeni regresyon testleri eklendi.""",
+        "en": """Highlights introduced in 6.1.11:
+
+- A new View menu was added with light, dark, and high-contrast theme options.
+- The selected theme is now stored in local settings and restored on the next launch.
+- The visible height of the gas-mixture list was increased so at least six rows can be viewed more comfortably.
+- The process-conditions section was rearranged into a more compact grid so labels, inputs, and unit selectors stay visually closer together.
+- Additional UI regression tests were added.""",
     },
 }
 

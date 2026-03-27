@@ -1,5 +1,13 @@
 # Changelog
 
+## 6.1.11
+
+- Added a new View menu with light, dark, and high-contrast themes.
+- Persisted the selected UI theme in local config so it is restored on the next launch.
+- Increased the visible height of the gas-mixture list so at least six rows are comfortably visible.
+- Tightened the process-conditions layout so labels, inputs, and unit selectors stay closer together on resize.
+- Added UI regression coverage for theme switching and the taller gas-mixture list.
+
 ## 6.1.10
 
 - Fixed the updater for public GitHub repos so an invalid stored token is cleared and the request is retried anonymously.
