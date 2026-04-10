@@ -1,0 +1,28 @@
+__pycache__/
+*.pyc
+*.py[cod]
+*.log
+.vscode/
+.idea/
+*.db
+
+# Test files
+test_*.py
+deneme*.json
+dene.json
+
+# Backups
+*_backup_*/
+_backups/
+
+# Build outputs
+build/
+dist/
+build_py313/
+dist_py313/
+build_release/
+*.exe
+
+# OS
+.DS_Store
+Thumbs.db
