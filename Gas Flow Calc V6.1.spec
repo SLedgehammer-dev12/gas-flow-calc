@@ -9,13 +9,25 @@ from release_metadata import get_versioned_exe_stem
 
 
 APP_EXE_STEM = get_versioned_exe_stem()
+PYTHON_DLLS_DIR = os.path.join(sys.base_prefix, "DLLs")
+SSL_RUNTIME_BINARIES = []
+for dll_name in ("_ssl.pyd", "libssl-3.dll", "libcrypto-3.dll"):
+    dll_path = os.path.join(PYTHON_DLLS_DIR, dll_name)
+    if os.path.isfile(dll_path):
+        SSL_RUNTIME_BINARIES.append((dll_path, "."))
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=[],
+    binaries=SSL_RUNTIME_BINARIES,
     datas=[],
-    hiddenimports=['unicodedata', 'matplotlib.backends.backend_tkagg', 'matplotlib.backends._backend_tk'],
+    hiddenimports=[
+        'unicodedata',
+        'ssl',
+        '_ssl',
+        'matplotlib.backends.backend_tkagg',
+        'matplotlib.backends._backend_tk',
+    ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -1,6 +1,8 @@
 from translations import t
 from data import PIPE_ROUGHNESS, FITTING_K_FACTORS
 from calculations import GasFlowCalculator
+from format_utils import safe_format, safe_number, safe_text
+from flow_utils import FLOW_MODE_INCOMPRESSIBLE, normalize_flow_mode
 
 class GasFlowController:
     def __init__(self):
@@ -60,6 +62,7 @@ class GasFlowController:
         p_design_val = self._parse_float(ui_state.get("p_design_val", 0))
         
         flow_type = ui_state.get("flow_type")
+        flow_mode = normalize_flow_mode(flow_type)
         
         if target == t("target_pressure_drop"):
             if len_val <= 0: errors.append("Boru uzunluğu pozitif olmalıdır.")
@@ -71,7 +74,7 @@ class GasFlowController:
         elif target == t("target_min_diameter"):
             if max_vel <= 0: errors.append("Maksimum hız limiti pozitif olmalıdır.")
             if p_design_val <= 0: errors.append("Tasarım basıncı pozitif olmalıdır.")
-            if flow_type == t("flow_compressible") and len_val <= 0:
+            if flow_mode != FLOW_MODE_INCOMPRESSIBLE and len_val <= 0:
                 errors.append("Sıkıştırılabilir akış çap hesabı için boru uzunluğu gereklidir.")
 
         D_inner = diam_val - 2 * thick_val
@@ -128,6 +131,7 @@ class GasFlowController:
             "roughness": PIPE_ROUGHNESS.get(material, 4.57e-5),
             "total_k": total_k,
             "flow_property": flow_type,
+            "flow_mode": flow_mode,
             "target": target,
             "P_out_target": abs_pa_target if target == t("target_max_length") else 0,
             
@@ -149,29 +153,29 @@ class GasFlowController:
         rows = []
         
         if target == t("target_pressure_drop"):
-            rows.append(("Giriş Basıncı", f"{self._parse_float(ui_state.get('p_in', 0)):.2f}", ui_state.get('p_unit', '')))
-            rows.append(("Çıkış Basıncı", f"{result['P_out']/1e5:.4f}", "bara"))
-            rows.append(("Toplam Basınç Kaybı", f"{result['delta_p_total']/1e5:.4f}", "bar"))
-            rows.append(("Giriş Hızı", f"{result['velocity_in']:.2f}", "m/s"))
-            rows.append(("Çıkış Hızı", f"{result['velocity_out']:.2f}", "m/s"))
+            rows.append(("Giriş Basıncı", safe_format(self._parse_float(ui_state.get('p_in', 0)), ".2f"), ui_state.get('p_unit', '')))
+            rows.append(("Çıkış Basıncı", safe_format(safe_number(result['P_out'], 0.0)/1e5, ".4f"), "bara"))
+            rows.append(("Toplam Basınç Kaybı", safe_format(safe_number(result['delta_p_total'], 0.0)/1e5, ".4f"), "bar"))
+            rows.append(("Giriş Hızı", safe_format(result['velocity_in'], ".2f"), "m/s"))
+            rows.append(("Çıkış Hızı", safe_format(result['velocity_out'], ".2f"), "m/s"))
             
         elif target == t("target_max_length"):
             if "error" in result:
-                 rows.append(("Durum", "HATA", "", "error"))
-                 rows.append(("Mesaj", result['error'], ""))
+                rows.append(("Durum", "HATA", "", "error"))
+                rows.append(("Mesaj", safe_text(result['error']), ""))
             else:
-                rows.append(("Maksimum Uzunluk", f"{result['L_max']:.2f}", "m"))
-                rows.append(("Reynolds", f"{result['Re']:.0f}", ""))
+                rows.append(("Maksimum Uzunluk", safe_format(result['L_max'], ".2f"), "m"))
+                rows.append(("Reynolds", safe_format(result['Re'], ".0f"), ""))
                 
         elif target == t("target_min_diameter"):
             if result.get('selected_pipe'):
                 p = result['selected_pipe']
-                rows.append(("Seçilen Boru", f"{p['nominal']}\"", f"Sch {p['schedule']}", "success"))
-                rows.append(("İç Çap", f"{p['D_inner_mm']:.2f}", "mm"))
+                rows.append(("Seçilen Boru", f"{safe_text(p['nominal'])}\"", f"Sch {safe_text(p['schedule'])}", "success"))
+                rows.append(("İç Çap", safe_format(p['D_inner_mm'], ".2f"), "mm"))
                 if 'weight_per_m' in p:
-                    rows.append((t("unit_weight") if t("unit_weight") != "unit_weight" else "Birim Ağırlık", f"{p['weight_per_m']:.2f}", "kg/m"))
-                rows.append(("Çıkış Hızı", f"{result['velocity_out']:.2f}", "m/s"))
-                rows.append(("Limit Hız", f"{result['max_vel']:.2f}", "m/s"))
+                    rows.append((t("unit_weight") if t("unit_weight") != "unit_weight" else "Birim Ağırlık", safe_format(p['weight_per_m'], ".2f"), "kg/m"))
+                rows.append(("Çıkış Hızı", safe_format(result['velocity_out'], ".2f"), "m/s"))
+                rows.append(("Limit Hız", safe_format(result['max_vel'], ".2f"), "m/s"))
                 
                 status_tag = "success" if "Uygun" in result['velocity_status'] else "warning"
                 rows.append(("Durum", result['velocity_status'], "", status_tag))
@@ -182,15 +186,33 @@ class GasFlowController:
                     rows.append(("--- Alternatif Seçenekler ---", "", "", "warning"))
                     for key, alt in result['alternatives'].items():
                         p_alt = alt['pipe']
-                        rows.append((f"[★] {alt['note']}", f"{p_alt['nominal']}\" Sch {p_alt['schedule']}", ""))
+                        rows.append((f"[★] {safe_text(alt['note'])}", f"{safe_text(p_alt['nominal'])}\" Sch {safe_text(p_alt['schedule'])}", ""))
                         if 'weight_per_m' in p_alt:
-                            rows.append((f"   ↳ Birim Ağırlık", f"{p_alt['weight_per_m']:.2f}", "kg/m"))
+                            rows.append((f"   ↳ Birim Ağırlık", safe_format(p_alt['weight_per_m'], ".2f"), "kg/m"))
                         if 'result' in alt and 'velocity_out' in alt['result']:
-                            rows.append((f"   ↳ Çıkış Hızı", f"{alt['result']['velocity_out']:.2f}", "m/s"))
+                            rows.append((f"   ↳ Çıkış Hızı", safe_format(alt['result']['velocity_out'], ".2f"), "m/s"))
             else:
                 rows.append(("Durum", "Uygun Boru Yok", "", "error"))
 
         if 'm_dot' in result:
-             rows.append(("Kütlesel Debi", f"{result['m_dot']:.4f}", "kg/s"))
-             
+             rows.append(("Kütlesel Debi", safe_format(result['m_dot'], ".4f"), "kg/s"))
+
+        if 'phase_info' in result:
+            phase_info = result['phase_info']
+            tag = {
+                'ok': 'success',
+                'warning': 'warning',
+                'critical': 'error',
+            }.get(phase_info.get('warning_level', 'ok'), '')
+            rows.append(("Akışkan Fazı", safe_text(phase_info.get('phase_label_tr', '-')), "", tag))
+            vapor_quality = phase_info.get('vapor_quality')
+            if vapor_quality is not None:
+                rows.append(("Buhar Kalitesi (Q)", safe_format(vapor_quality, ".3f"), "[-]"))
+            formula_label = phase_info.get('formula_label_tr')
+            if formula_label:
+                rows.append(("Formül Seti", safe_text(formula_label), ""))
+            transition_distance = phase_info.get('transition_to_two_phase_m')
+            if transition_distance is not None:
+                rows.append(("İki Faz Geçişi", safe_format(transition_distance, ".2f"), "m", tag))
+
         return rows

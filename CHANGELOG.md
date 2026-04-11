@@ -1,5 +1,13 @@
 # Changelog
 
+## 6.2.0
+
+- Added a phase-aware flow engine that tracks gas, liquid, and two-phase conditions along the pipe profile.
+- Improved single-phase liquid calculations with Churchill friction-factor handling and a density-change acceleration term.
+- Hardened CoolProp phase/property handling for cryogenic and metastable points using envelope-based fallbacks and safer formatting paths.
+- Expanded detailed reports to include input composition and inlet/outlet thermophysical properties.
+- Normalized flow-mode handling across Turkish and English labels and carried the phase-aware logic into max-length and minimum-diameter workflows.
+
 ## 6.1.13
 
 - Fixed Length input visibility bug in Minimum Diameter mode that kept the field hidden on startup.

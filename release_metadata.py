@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.13"
+APP_VERSION = "6.2.0"
 
 
 RELEASE_NOTES = {
@@ -186,6 +186,22 @@ RELEASE_NOTES = {
 
 - Fixed the UI logic bug that caused the length input to remain hidden at startup in Minimum Diameter mode.
 - The summary table for alternative pipe options in the Minimum Diameter target now displays gas exit velocities."""
+    },
+    "6.2.0": {
+        "tr": """6.2.0 ile gelen baslica yenilikler:
+
+- Faz duyarlı akış motoru eklendi; segment bazında gaz, sivi ve iki faz bolgeleri izleniyor ve raporlanıyor.
+- Sivi tek-faz hesabı Darcy-Weisbach tabanı uzerinde Churchill surtunme faktoru ve yogunluk degisimine bagli ivmelenme terimi ile iyilestirildi.
+- Faz flash cozumunun zorlandigi kriyojenik ve metastabil noktalarda CoolProp envelope fallback mantigi eklendi; ham hata mesajlari yerine anlamli faz uyarlari uretiliyor.
+- Detay rapora girilen kompozisyon ile giris/cikis PT noktalarindaki yogunluk, molekuler agirlik, Z, Cp, Cv, viskozite ve ses hizi gibi ozellikler eklendi.
+- Akis tipi secimi Turkce/Ingilterce etiketlerden bagimsiz hale getirildi; guncelleyici ve paketleme zinciri SSL/runtime sorunlarina karsi sertlestirildi.""",
+        "en": """Highlights introduced in 6.2.0:
+
+- Added a phase-aware flow engine that tracks and reports gas, liquid, and two-phase regions segment by segment.
+- Improved the single-phase liquid calculation with a Darcy-Weisbach base plus Churchill friction factor and a density-change acceleration term.
+- Added CoolProp envelope fallbacks for cryogenic and metastable points so users get meaningful phase diagnostics instead of raw flash errors.
+- Extended the detailed report with input composition plus inlet/outlet PT properties such as density, molecular weight, Z, Cp, Cv, viscosity, and speed of sound.
+- Hardened flow-mode normalization across Turkish/English labels and improved updater/packaging resilience against SSL/runtime issues."""
     }
 }
 

@@ -2,7 +2,6 @@ import json
 import os
 import re
 import shutil
-import ssl
 import subprocess
 import tempfile
 import zipfile
@@ -12,6 +11,12 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from app_paths import load_config, save_config
+
+
+try:
+    import ssl
+except Exception:
+    ssl = None
 
 
 GITHUB_API_RELEASES = "https://api.github.com/repos/{repo}/releases/latest"
@@ -136,6 +141,11 @@ class Updater:
                 return "GitHub token gecersiz veya yetkisiz (HTTP 401)."
             if error.code == 403:
                 return "GitHub erisimi reddedildi veya rate limit asildi (HTTP 403)."
+        if ssl is None:
+            return (
+                "Python SSL calisma zamani kullanilamiyor. Guncelleyici HTTPS baglantisi icin "
+                "Windows ag katmanina veya harici tarayici/manuel indirmeye dusurulmelidir."
+            )
         if isinstance(error, URLError) and self._is_ssl_verification_error(error):
             return (
                 "SSL sertifika zinciri dogrulanamadi. Kurumsal ag SSL denetimi veya "
@@ -145,10 +155,15 @@ class Updater:
 
     def _is_ssl_verification_error(self, error):
         reason = getattr(error, "reason", error)
-        if isinstance(reason, ssl.SSLCertVerificationError):
+        ssl_cert_error = getattr(ssl, "SSLCertVerificationError", None)
+        if ssl_cert_error and isinstance(reason, ssl_cert_error):
             return True
         text = str(reason or error)
-        return "CERTIFICATE_VERIFY_FAILED" in text or "Missing Authority Key Identifier" in text
+        return (
+            "CERTIFICATE_VERIFY_FAILED" in text
+            or "Missing Authority Key Identifier" in text
+            or "No module named '_ssl'" in text
+        )
 
     @staticmethod
     def _ps_quote(value: str):
@@ -195,6 +210,15 @@ class Updater:
 
     def _read_url_text(self, url: str, accept: str | None = None, timeout: int = 10):
         headers = self._headers(accept)
+        if ssl is None:
+            if os.name == "nt":
+                self.log(
+                    "Python SSL kullanilamiyor; Windows ag katmani ile istek gonderiliyor.",
+                    level="WARNING",
+                )
+                return self._powershell_fetch_text(url, headers, timeout)
+            raise RuntimeError(self._format_request_error(RuntimeError("No module named '_ssl'")))
+
         req = Request(url, headers=headers)
         try:
             with urlopen(req, timeout=timeout) as resp:
@@ -324,6 +348,17 @@ class Updater:
             req = Request(browser_download_url, headers=self._headers())
             with urlopen(req, timeout=60) as resp:
                 return resp.read()
+
+        if ssl is None:
+            if os.name == "nt":
+                self.log(
+                    "Python SSL kullanilamiyor; indirme Windows ag katmani ile yapiliyor.",
+                    level="WARNING",
+                )
+                self._powershell_download_to_path(browser_download_url, self._headers(), file_path, timeout=60)
+                self.log(f"Indirme tamamlandi: {file_path}")
+                return file_path
+            raise RuntimeError(self._format_request_error(RuntimeError("No module named '_ssl'")))
 
         try:
             data = _download_once()

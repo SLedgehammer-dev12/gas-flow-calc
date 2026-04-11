@@ -24,6 +24,12 @@ from ui.widgets import ToolTip, ValidationHelper, ValidatedEntry
 from ui.dialogs import show_about, show_user_guide, show_program_details
 from ui.schematic import SchematicDrawer
 from ui.graphs import show_graphs
+from flow_utils import (
+    FLOW_MODE_INCOMPRESSIBLE,
+    get_flow_mode_label,
+    normalize_flow_mode,
+)
+from target_utils import get_calc_target_label, normalize_calc_target
 from ui.panels.gas_panel import GasPanel
 from ui.panels.process_panel import ProcessPanel
 from ui.panels.pipe_panel import PipePanel
@@ -1017,8 +1023,9 @@ class GasFlowCalculatorApp:
         is_pressure_drop = target == t("target_pressure_drop")
         is_max_length = target == t("target_max_length")
         is_min_diameter = target == t("target_min_diameter")
+        flow_mode = normalize_flow_mode(self.flow_type.get())
         needs_length = is_pressure_drop or (
-            is_min_diameter and self.flow_type.get() == t("flow_compressible")
+            is_min_diameter and flow_mode != FLOW_MODE_INCOMPRESSIBLE
         )
 
         self._set_widget_state(self.ent_len, needs_length)
@@ -1112,8 +1119,10 @@ class GasFlowCalculatorApp:
             "t_val": self.t_var.get(), "t_unit": self.t_unit.get(),
             "flow_val": self.flow_var.get(), "flow_unit": self.flow_unit.get(),
             "calc_target": self.calc_target.get(),
+            "calc_target_mode": normalize_calc_target(self.calc_target.get()),
             "thermo_model": self.thermo_model.get(),
             "flow_type": self.flow_type.get(),
+            "flow_mode": normalize_flow_mode(self.flow_type.get()),
             "material": self.material_combo.get(),
             "opt_weight": self.opt_weight_var.get(),
             "fast_calc": self.fast_calc_var.get(),
@@ -1167,9 +1176,24 @@ class GasFlowCalculatorApp:
         self.t_unit.set(data.get("t_unit", "°C"))
         self.flow_var.set(data.get("flow_val", 0))
         self.flow_unit.set(data.get("flow_unit", "Sm³/h"))
-        self.calc_target.set(data.get("calc_target", t("target_min_diameter")))
+        saved_target_mode = data.get("calc_target_mode", data.get("calc_target"))
+        self.calc_target.set(
+            get_calc_target_label(
+                saved_target_mode,
+                pressure_drop_label=t("target_pressure_drop"),
+                max_length_label=t("target_max_length"),
+                min_diameter_label=t("target_min_diameter"),
+            )
+        )
         self.thermo_model.set(data.get("thermo_model", "CoolProp (High Accuracy EOS)"))
-        self.flow_type.set(data.get("flow_type", "Sıkıştırılamaz"))
+        saved_flow_mode = data.get("flow_mode", data.get("flow_type"))
+        self.flow_type.set(
+            get_flow_mode_label(
+                saved_flow_mode,
+                compressible_label=t("flow_compressible"),
+                incompressible_label=t("flow_incompressible"),
+            )
+        )
         self.material_combo.set(data.get("material", "API 5L Grade B"))
         self._on_material_changed()  # SMYS güncelle
         if "smys_val" in data:
@@ -1237,7 +1261,7 @@ class GasFlowCalculatorApp:
         elif target == t("target_min_diameter"):
             if self.get_float_value(self.max_vel_var, 0) <= 0: errors.append("Maksimum hız limiti pozitif olmalıdır.")
             if self.get_float_value(self.p_design_var, 0) <= 0: errors.append("Tasarım basıncı pozitif olmalıdır.")
-            if self.flow_type.get() == t("flow_compressible") and self.get_float_value(self.len_var, 0) <= 0:
+            if normalize_flow_mode(self.flow_type.get()) != FLOW_MODE_INCOMPRESSIBLE and self.get_float_value(self.len_var, 0) <= 0:
                 errors.append("Sıkıştırılabilir akış çap hesabı için boru uzunluğu gereklidir.")
 
         if errors:
@@ -1415,6 +1439,7 @@ class GasFlowCalculatorApp:
             "roughness": PIPE_ROUGHNESS.get(self.material_combo.get(), 4.57e-5),
             "total_k": total_k,
             "flow_property": self.flow_type.get(),
+            "flow_mode": normalize_flow_mode(self.flow_type.get()),
             "target": self.calc_target.get(),
             "P_out_target": self.convert_pressure_to_pa(self.get_float_value(self.target_p_var, 0), self.target_p_unit.get(), output_type="absolute") if self.calc_target.get() == t("target_max_length") else 0,
             
@@ -1515,8 +1540,41 @@ class GasFlowCalculatorApp:
     def _update_warning_banner(self, result):
         """Hesaplama sonucuna göre uyarı afişini yönetir."""
         self.warning_card.pack_forget()
+        phase_info = result.get("phase_info") or {}
+        phase = phase_info.get("phase")
+        warning_level = phase_info.get("warning_level", "ok")
+        vapor_quality = phase_info.get("vapor_quality")
+        formula_label = phase_info.get("formula_label_tr", "")
         status = result.get("choked_status", "N/A")
-        
+
+        if warning_level in {"warning", "critical"} and phase in {"two_phase", "liquid", "unknown"}:
+            if phase == "two_phase":
+                if vapor_quality is not None and vapor_quality > 0.85:
+                    bg = "#fff3cd"
+                    fg = "#856404"
+                else:
+                    bg = "#ffe5d0"
+                    fg = "#9a3412"
+                text = f"{phase_info.get('phase_label_tr', 'Iki Fazli')} tespit edildi"
+                if vapor_quality is not None:
+                    text += f" | Q = {vapor_quality:.3f}"
+            elif phase == "liquid":
+                bg = "#dbeafe"
+                fg = "#1d4ed8"
+                text = "Sivi faz tespit edildi"
+            else:
+                bg = "#f3f4f6"
+                fg = "#374151"
+                text = phase_info.get("warning_msg_tr", "Faz belirlenemedi")
+
+            if formula_label:
+                text += f" | {formula_label}"
+
+            self.warning_label.config(text=text, bg=bg, fg=fg)
+            self.warning_card.config(bg=bg)
+            self.warning_card.pack(fill="x", pady=(0, 5), after=self.summary_card)
+            return
+
         if status != "OK" and status != "N/A":
             if "CHOKED" in status:
                 self.warning_label.config(text=t("warning_choked"), bg="#f8d7da", fg="#721c24")
