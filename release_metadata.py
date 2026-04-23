@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.2.0"
+APP_VERSION = "6.2.1"
 
 
 RELEASE_NOTES = {
@@ -202,6 +202,14 @@ RELEASE_NOTES = {
 - Added CoolProp envelope fallbacks for cryogenic and metastable points so users get meaningful phase diagnostics instead of raw flash errors.
 - Extended the detailed report with input composition plus inlet/outlet PT properties such as density, molecular weight, Z, Cp, Cv, viscosity, and speed of sound.
 - Hardened flow-mode normalization across Turkish/English labels and improved updater/packaging resilience against SSL/runtime issues."""
+    },
+    "6.2.1": {
+        "tr": """6.2.1 ile gelen baslica yenilikler:
+
+- Kurumsal antivirüs (Windows Defender vb.) yazilimlarinin yanlis pozitif (false-positive) uyarilarini engellemek amaciyla paketleme ayarlarina exe versiyon ve yayinci bilgileri (metadata) eklendi.""",
+        "en": """Highlights introduced in 6.2.1:
+
+- Executable version and publisher metadata were added to the packaging build to prevent false-positive detections by corporate antivirus software (e.g., Windows Defender)."""
     }
 }
 
