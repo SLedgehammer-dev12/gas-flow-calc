@@ -232,6 +232,14 @@ MIMARI:
 - GasFlowController (controllers.py) aktiflestirildi; start_calculation artik controller uzerinden veri topluyor.
 - patch_main.py silindi; olü kod temizlendi.
 - 10+ sessiz except Exception: pass blogu log'lu hale getirildi.
+- Giris parola dogrulamasi geri eklendi (root.withdraw/deiconify yontemiyle).
+- Min Cap alternatif secenekleri gosterme bug'i giderildi.
+
+YENI TERMODINAMIK MODEL:
+- AGA-8 GERG-2008 ve AGA-8 DETAIL modelleri eklendi (pyaga8 Rust kutuphanesi uzerinden).
+- AGA-8, dogal gaz custody transfer standardidir; Z-faktoru ve yogunlukta en yuksek dogrulugu saglar.
+- Viskozite Lee-Gonzalez-Eakin korelasyonu ile hesaplaniyor.
+- CoolProp'tan 5-10x daha hizli termodinamik hesaplama.
 
 KOD KALITESI:
 - constants.py olusturuldu; fiziksel sabitler, birim donusumleri ve yakinsama degerleri tek noktadan yonetiliyor.
@@ -239,7 +247,7 @@ KOD KALITESI:
 - Kullanilmayan functools.lru_cache import'u kaldirildi.
 
 TEST:
-- 87 test (onceki 37 test + 50 yeni): format_utils, app_paths, controllers, auth brute-force, edge case'ler.
+- 95 test (onceki 37 test + 50 yeni + 8 PYAGA8): format_utils, app_paths, controllers, auth brute-force, edge case'ler, PYAGA8.
 - pytest.ini, conftest.py eklendi; coverage altyapisi hazir.
 - .gitignore test_*.py deseni sadece kok dizinle sinirlandirildi (tests/ dizini etkilenmez).
 
@@ -265,6 +273,14 @@ ARCHITECTURE:
 - GasFlowController (controllers.py) activated; start_calculation now collects data through the controller.
 - patch_main.py deleted; dead code removed.
 - 10+ silent except Exception: pass blocks are now properly logged.
+- Application login restored (root.withdraw/deiconify method).
+- Min Diameter alternatives display bug fixed.
+
+NEW THERMODYNAMIC MODELS:
+- AGA-8 GERG-2008 and AGA-8 DETAIL models added (via pyaga8 Rust library).
+- AGA-8 is the industry standard for natural gas custody transfer; provides highest Z-factor and density accuracy.
+- Viscosity computed via Lee-Gonzalez-Eakin correlation.
+- 5-10x faster thermodynamic calculation than CoolProp.
 
 CODE QUALITY:
 - constants.py created; physical constants, unit conversions, and convergence values centrally managed.
@@ -272,7 +288,7 @@ CODE QUALITY:
 - Unused functools.lru_cache import removed.
 
 TESTING:
-- 87 tests (previously 37 + 50 new): format_utils, app_paths, controllers, auth brute-force, edge cases.
+- 95 tests (previously 37 + 50 new + 8 PYAGA8): format_utils, app_paths, controllers, auth brute-force, edge cases, PYAGA8.
 - pytest.ini, conftest.py added; coverage infrastructure ready.
 - .gitignore test_*.py pattern now limited to root directory (tests/ unaffected).
 

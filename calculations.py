@@ -1014,11 +1014,79 @@ class GasFlowCalculator:
             "sonic_velocity": sonic_velocity
         }
 
+    def calculate_aga8_properties(self, P, T, mole_fractions, eos_type="GERG2008"):
+        # PYAGA8 kompozisyon mapping
+        _AGA8_COMPONENT_MAP = {
+            "Methane": "methane", "Ethane": "ethane", "Propane": "propane",
+            "IsoButane": "isobutane", "n-Butane": "n_butane", "Isopentane": "isopentane",
+            "n-Pentane": "n_pentane", "n-Hexane": "n_hexane", "n-Heptane": "n_heptane",
+            "n-Octane": "n_octane", "Nitrogen": "nitrogen", "CarbonDioxide": "carbon_dioxide",
+            "Oxygen": "oxygen", "Water": "water", "HydrogenSulfide": "hydrogen_sulfide",
+            "Helium": "helium", "Argon": "argon",
+        }
+        normalized = self.normalize_mole_fractions(mole_fractions)
+        comp = __import__("pyaga8").Composition()
+        total = 0.0
+        for gas, fraction in normalized.items():
+            field = _AGA8_COMPONENT_MAP.get(gas)
+            if field:
+                setattr(comp, field, fraction)
+                total += fraction
+        if total <= 0:
+            raise ValueError("AGA-8: desteklenen gaz bileseni yok.")
+        if abs(total - 1.0) > 0.001:
+            for gas, fraction in normalized.items():
+                field = _AGA8_COMPONENT_MAP.get(gas)
+                if field:
+                    setattr(comp, field, fraction / total)
+
+        EOS_class = __import__("pyaga8").Gerg2008 if eos_type == "GERG2008" else __import__("pyaga8").Detail
+        state = EOS_class()
+        state.set_composition(comp)
+        state.pressure = P / 1000.0
+        state.temperature = T
+        if eos_type == "GERG2008":
+            state.calc_density(0)
+        else:
+            state.calc_density()
+        state.calc_properties()
+        state.calc_molar_mass()
+
+        Z = state.z
+        MW_mix = state.mm
+        density_kg_m3 = state.d * MW_mix
+        standard_density = (STD_PRESSURE_PA * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (1.0 * R_J_MOL_K * STD_TEMP_K)
+
+        # Lee-Gonzalez-Eakin viscosity
+        T_R = T * 1.8
+        rho_gcc = density_kg_m3 / 1000.0
+        X = 3.5 + 986.0 / T_R + 0.01 * MW_mix
+        Y = 2.4 - 0.2 * X
+        K = ((9.4 + 0.02 * MW_mix) * T_R ** 1.5) / (209 + 19 * MW_mix + T_R)
+        viscosity = K * math.exp(X * (rho_gcc ** Y)) * 1e-7
+
+        return {
+            "MW": MW_mix,
+            "Cp": state.cp / MW_mix,
+            "Cv": state.cv / MW_mix,
+            "Z": Z,
+            "density": density_kg_m3,
+            "viscosity": viscosity,
+            "standard_density": standard_density,
+            "sonic_velocity": state.w,
+            "viscosity_fallback": False,
+            "thermo_fallback": False,
+        }
+
     def calculate_thermo_properties(self, P, T, mole_fractions, library_choice, state=None):
         mole_fractions = self.normalize_mole_fractions(mole_fractions)
         if library_choice == "CoolProp (High Accuracy EOS)":
             mixture = self.build_mixture_string(mole_fractions)
             return self.calculate_coolprop_properties(P, T, mixture, state, mole_fractions=mole_fractions)
+        elif library_choice == "AGA-8 GERG-2008":
+            return self.calculate_aga8_properties(P, T, mole_fractions, "GERG2008")
+        elif library_choice == "AGA-8 DETAIL":
+            return self.calculate_aga8_properties(P, T, mole_fractions, "DETAIL")
         elif library_choice == "Peng-Robinson (PR EOS)":
             return self.calculate_cubic_eos_props(P, T, mole_fractions, "PR")
         elif library_choice == "Soave-Redlich-Kwong (SRK EOS)":

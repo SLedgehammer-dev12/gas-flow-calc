@@ -77,6 +77,8 @@ class ProcessPanel(ttk.LabelFrame):
             grid,
             values=[
                 "CoolProp (High Accuracy EOS)",
+                "AGA-8 GERG-2008",
+                "AGA-8 DETAIL",
                 "Peng-Robinson (PR EOS)",
                 "Soave-Redlich-Kwong (SRK EOS)",
                 "Pseudo-Critical (Kay's Rule)",

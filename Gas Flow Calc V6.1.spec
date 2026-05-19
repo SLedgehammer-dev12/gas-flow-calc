@@ -27,6 +27,8 @@ a = Analysis(
         '_ssl',
         'matplotlib.backends.backend_tkagg',
         'matplotlib.backends._backend_tk',
+        'pyaga8',
+        'win32crypt',
     ],
     hookspath=[],
     hooksconfig={},

@@ -75,6 +75,7 @@ class GasFlowCalculatorApp:
 
         # Hesaplama Motoru
         self.calculator = GasFlowCalculator()
+        self.controller = GasFlowController()
         self.calculator.set_log_callback(self.log_message)
         # Güncelleme yöneticisi
         self.updater = Updater(self.log_message)
@@ -1529,10 +1530,10 @@ class GasFlowCalculatorApp:
                 add_row("Durum", result['velocity_status'], "", status_tag)
                 
                 # Alternatif Senaryolar Gridi
-                if 'alternative_options' in result and result['alternative_options']:
+                if 'alternatives' in result and result['alternatives']:
                     add_row("", "", "")  # Boşluk
                     add_row("--- Alternatif Seçenekler ---", "", "", "warning")
-                    for alt in result['alternative_options']:
+                    for key, alt in result['alternatives'].items():
                         p_alt = alt['pipe']
                         add_row(f"[★] {alt['note']}", f"{p_alt['nominal']}\" Sch {p_alt['schedule']}", "")
                         if 'weight_per_m' in p_alt:
@@ -1750,5 +1751,10 @@ class GasFlowCalculatorApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.withdraw()
+    if not prompt_for_program_access(root):
+        root.destroy()
+        sys.exit(0)
+    root.deiconify()
     app = GasFlowCalculatorApp(root)
     root.mainloop()
