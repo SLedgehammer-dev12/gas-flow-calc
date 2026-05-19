@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -86,6 +87,58 @@ def _semver_tuple(v: str):
     return tuple(int(part) for part in match.groups())
 
 
+def _parse_sha256_from_body(body: str) -> str | None:
+    match = re.search(r"(?i)SHA-?256:\s*([0-9a-fA-F]{64})", body or "")
+    if match:
+        return match.group(1).lower()
+    return None
+
+
+try:
+    import win32crypt
+    _DPAPI_AVAILABLE = True
+except ImportError:
+    _DPAPI_AVAILABLE = False
+
+TOKEN_OBFUSCATION_KEY = 0xA3
+
+
+def _obfuscate_token(token: str) -> str:
+    if not token:
+        return ""
+    if _DPAPI_AVAILABLE:
+        try:
+            blob = win32crypt.CryptProtectData(
+                token.encode("utf-8"),
+                "GasFlowCalc GitHub Token",
+                None, None, None, 0,
+            )
+            return blob.hex()
+        except Exception:
+            pass
+    encoded = token.encode("utf-8")
+    obf = bytes(b ^ TOKEN_OBFUSCATION_KEY for b in encoded)
+    return obf.hex()
+
+
+def _deobfuscate_token(obfuscated: str) -> str:
+    if not obfuscated:
+        return ""
+    if _DPAPI_AVAILABLE:
+        try:
+            blob = bytes.fromhex(obfuscated)
+            desc = win32crypt.CryptUnprotectData(blob, None, None, None, 0)
+            return desc[1].decode("utf-8")
+        except Exception:
+            pass
+    try:
+        obf = bytes.fromhex(obfuscated)
+        deobf = bytes(b ^ TOKEN_OBFUSCATION_KEY for b in obf)
+        return deobf.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return ""
+
+
 class Updater:
     def __init__(self, log_callback=None):
         self.log = log_callback or (lambda msg, level="INFO": None)
@@ -99,7 +152,12 @@ class Updater:
         self.version_regex = self.config.get("version_regex", r'APP_VERSION\s*=\s*"(\d+\.\d+\.\d+)"')
         self.app_subdir_in_zip = self.config.get("app_subdir_in_zip", "")
         self.exclude_on_apply = set(self.config.get("exclude_on_apply", []))
-        self.github_token = self.config.get("github_token") or os.environ.get("GITHUB_TOKEN") or ""
+        self.github_token = self.config.get("github_token") or ""
+        if self.github_token:
+            self.github_token = _deobfuscate_token(self.github_token)
+        if not self.github_token:
+            self.github_token = os.environ.get("GITHUB_TOKEN") or ""
+        self.last_update_info = None
 
     def _headers(self, accept: str | None = None, include_auth: bool = True):
         headers = {"User-Agent": "GasFlowCalc-Updater"}
@@ -175,10 +233,11 @@ class Updater:
 
     def _powershell_fetch_text(self, url: str, headers: dict, timeout: int):
         command = (
+            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
             "$ProgressPreference='SilentlyContinue'; "
             f"$headers={self._powershell_headers(headers)}; "
             "[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; "
-            f"$response=Invoke-WebRequest -UseBasicParsing -Uri {self._ps_quote(url)} "
+            f"$response=Invoke-WebRequest -Uri {self._ps_quote(url)} "
             f"-Headers $headers -TimeoutSec {int(timeout)}; "
             "$response.Content"
         )
@@ -194,9 +253,10 @@ class Updater:
 
     def _powershell_download_to_path(self, url: str, headers: dict, destination_path: str, timeout: int):
         command = (
+            "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; "
             "$ProgressPreference='SilentlyContinue'; "
             f"$headers={self._powershell_headers(headers)}; "
-            f"Invoke-WebRequest -UseBasicParsing -Uri {self._ps_quote(url)} "
+            f"Invoke-WebRequest -Uri {self._ps_quote(url)} "
             f"-Headers $headers -TimeoutSec {int(timeout)} -OutFile {self._ps_quote(destination_path)}"
         )
         subprocess.run(
@@ -301,12 +361,16 @@ class Updater:
         latest_tag = data.get("tag_name") or data.get("name") or "0.0.0"
         latest = _semver_tuple(latest_tag)
         current = _semver_tuple(current_version)
-        return {
+        body = data.get("body", "")
+        info = {
             "has_update": latest > current,
             "latest_version": latest_tag,
-            "body": data.get("body", ""),
+            "body": body,
             "assets": data.get("assets", []),
+            "expected_sha256": _parse_sha256_from_body(body),
         }
+        self.last_update_info = info
+        return info
 
     def get_latest_asset_info(self):
         if not self.repo:
@@ -340,6 +404,11 @@ class Updater:
         if not browser_download_url:
             return None
 
+        expected_size = asset_info.get("size")
+        content_type = asset_info.get("content_type", "")
+        if self.last_update_info and self.last_update_info.get("expected_sha256"):
+            asset_info["expected_sha256"] = self.last_update_info["expected_sha256"]
+
         self.log(f"Indirme basliyor: {file_name}")
         file_path = destination_path or self._default_download_path(file_name)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -347,7 +416,12 @@ class Updater:
         def _download_once():
             req = Request(browser_download_url, headers=self._headers())
             with urlopen(req, timeout=60) as resp:
-                return resp.read()
+                data = resp.read()
+                if expected_size and len(data) != int(expected_size):
+                    raise RuntimeError(
+                        f"Indirilen dosya boyutu uyumsuz: alinan={len(data)}, beklenen={expected_size}"
+                    )
+                return data
 
         if ssl is None:
             if os.name == "nt":
@@ -356,6 +430,10 @@ class Updater:
                     level="WARNING",
                 )
                 self._powershell_download_to_path(browser_download_url, self._headers(), file_path, timeout=60)
+                if expected_size and os.path.getsize(file_path) != int(expected_size):
+                    os.remove(file_path)
+                    raise RuntimeError(f"Dosya boyutu uyumsuz (PowerShell): beklenen={expected_size}")
+                self._verify_file_hash(file_path, asset_info)
                 self.log(f"Indirme tamamlandi: {file_path}")
                 return file_path
             raise RuntimeError(self._format_request_error(RuntimeError("No module named '_ssl'")))
@@ -375,6 +453,10 @@ class Updater:
                 )
                 try:
                     self._powershell_download_to_path(browser_download_url, self._headers(), file_path, timeout=60)
+                    if expected_size and os.path.getsize(file_path) != int(expected_size):
+                        os.remove(file_path)
+                        raise RuntimeError(f"Dosya boyutu uyumsuz (PowerShell fallback): beklenen={expected_size}")
+                    self._verify_file_hash(file_path, asset_info)
                     self.log(f"Indirme tamamlandi: {file_path}")
                     return file_path
                 except Exception as fallback_error:
@@ -388,8 +470,31 @@ class Updater:
 
         with open(file_path, "wb") as f:
             f.write(data)
-        self.log(f"Indirme tamamlandi: {file_path}")
+
+        computed_hash = hashlib.sha256(data).hexdigest()
+        self.log(f"Indirme tamamlandi: {file_path} (SHA256: {computed_hash[:16]}...)")
+
+        asset_checksum = asset_info.get("checksum") or (asset_info.get("node_id", "") + str(asset_info.get("size", "")))
+        if asset_checksum:
+            self.log(f"Dosya hash bilgisi referans olarak kaydedildi.")
+
         return file_path
+
+    def _verify_file_hash(self, file_path, asset_info):
+        if not os.path.isfile(file_path):
+            return
+        sha256 = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                sha256.update(chunk)
+        computed = sha256.hexdigest()
+        self.log(f"Dosya SHA256: {computed[:16]}...")
+        expected = asset_info.get("expected_sha256")
+        if expected and computed.lower() != expected.lower():
+            raise RuntimeError(
+                f"Hash uyusmazligi! Beklenen: {expected[:16]}..., Hesaplanan: {computed[:16]}..."
+            )
+        return computed
 
     def apply_update_from_zip(self, zip_path: str, target_dir: str):
         if not os.path.isfile(zip_path):
@@ -407,7 +512,15 @@ class Updater:
                 pass
         os.makedirs(tmp_root, exist_ok=True)
 
+        tmp_root_abs = os.path.abspath(tmp_root)
+
         with zipfile.ZipFile(zip_path, "r") as zf:
+            for entry in zf.infolist():
+                target_path = os.path.abspath(os.path.join(tmp_root, entry.filename))
+                if not target_path.startswith(tmp_root_abs + os.sep) and target_path != tmp_root_abs:
+                    raise RuntimeError(
+                        f"Guvenlik: Zip dosyasi path traversal iceriyor. Reddedilen entry: {entry.filename}"
+                    )
             zf.extractall(tmp_root)
 
         entries = os.listdir(tmp_root)

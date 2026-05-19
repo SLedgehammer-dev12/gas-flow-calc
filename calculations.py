@@ -1,15 +1,20 @@
 
 import math
-import numpy as np
-from functools import lru_cache
+import threading
 from concurrent.futures import ThreadPoolExecutor
 import CoolProp.CoolProp as CP
 from data import COOLPROP_GASES, PIPE_MATERIALS, PIPE_ROUGHNESS, FITTING_K_FACTORS, ASME_B36_10M_DATA
 from flow_utils import FLOW_MODE_INCOMPRESSIBLE, normalize_flow_mode
-
-# R: Evrensel Gaz Sabiti [J/(mol*K)]
-R_J_mol_K = 8.314462618
-MIN_PRESSURE_PA = 1000.0 # Mutlak minimum basınç (1000 Pa)
+from constants import (
+    R_J_MOL_K, STD_PRESSURE_PA, STD_TEMP_K, MIN_PRESSURE_PA,
+    BAR_TO_PA, MPA_TO_PA, SM3H_TO_M3S, G_PER_MOL_TO_KG_PER_MOL,
+    KG_PER_MOL_TO_G_PER_MOL, KELVIN_TO_RANKINE, KG_M3_TO_G_PER_CC,
+    MICROPOISE_TO_PA_S, MM_TO_M, FRICTION_INIT_GUESS, FRICTION_CONVERGENCE,
+    FRICTION_SQRT_MIN, COLEBROOK_ROUGH_DIV, COLEBROOK_RE_DIV,
+    BINARY_SEARCH_ITER, DAK_NR_MAX_ITER, DAK_RHO_R_CONVERGENCE,
+    THREAD_POOL_MAX_WORKERS, FUTURE_TIMEOUT_SEC, THERMO_CACHE_MAXSIZE,
+)
+from translations import t
 
 _GAS_NAME_LOOKUP = {}
 for gas_key, gas_props in COOLPROP_GASES.items():
@@ -17,6 +22,31 @@ for gas_key, gas_props in COOLPROP_GASES.items():
     _GAS_NAME_LOOKUP[gas_key.casefold()] = canonical_name
     _GAS_NAME_LOOKUP[canonical_name.casefold()] = canonical_name
     _GAS_NAME_LOOKUP[gas_props["name"].casefold()] = canonical_name
+
+
+def solve_cubic(a2, a1, a0):
+    p = (3.0 * a1 - a2 * a2) / 3.0
+    q = (2.0 * a2 * a2 * a2 - 9.0 * a2 * a1 + 27.0 * a0) / 27.0
+    discriminant = (q / 2.0) ** 2 + (p / 3.0) ** 3
+    three = 3.0
+    offset = a2 / three
+    if discriminant > 0:
+        u = (-q / 2.0 + math.sqrt(discriminant)) ** (1.0 / three)
+        v = (-q / 2.0 - math.sqrt(discriminant)) ** (1.0 / three)
+        r0 = u + v - offset
+        return [r0, r0, r0]
+    elif discriminant == 0:
+        u = (-q / 2.0) ** (1.0 / three)
+        r0 = 2.0 * u - offset
+        r1 = -u - offset
+        return [r0, r1, r1]
+    else:
+        phi = math.acos(-q / 2.0 / math.sqrt(-(p / three) ** 3))
+        two_sqrt = 2.0 * math.sqrt(-p / three)
+        r0 = two_sqrt * math.cos(phi / three) - offset
+        r1 = two_sqrt * math.cos((phi + 2.0 * math.pi) / three) - offset
+        r2 = two_sqrt * math.cos((phi + 4.0 * math.pi) / three) - offset
+        return [r0, r1, r2]
 
 
 def _cp_arg(value):
@@ -39,14 +69,54 @@ def cp_abstract_state(backend, fluids):
         return CP.AbstractState(_cp_arg(backend), _cp_arg(fluids))
 
 
+# Phase labels
+PHASE_LABEL_GAS = "Tek Fazli Gaz"
+PHASE_LABEL_LIQUID = "Tek Fazli Sivi"
+PHASE_LABEL_TWO_PHASE = "Iki Fazli (Gaz + Sivi Karisimi)"
+PHASE_LABEL_SUPERCRITICAL = "Superkritik"
+PHASE_LABEL_UNKNOWN = "Belirsiz"
+
+# Formula labels
+FORMULA_LABEL_LM = "Lockhart-Martinelli Iki Fazli Korelasyon"
+FORMULA_LABEL_DW_CHURCHILL = "Darcy-Weisbach + Churchill f + Ivmelenme Duzeltmesi"
+FORMULA_LABEL_DW_INCOMPRESSIBLE = "Darcy-Weisbach (Sabit Yogunluk)"
+FORMULA_LABEL_DW_COMPRESSIBLE = "Darcy-Weisbach (Sikistirilabilir Gaz)"
+
+# Phase warning messages
+WARN_LIQUID_DETECTED = (
+    "Sivi faz tespit edildi. Darcy-Weisbach, Churchill surtunme faktoru ve "
+    "yogunluk degisimine bagli ivmelenme duzeltmesi kullanildi. "
+    "Kot farki girdisi olmadigi icin yercekimi terimi hesaba dahil edilmedi."
+)
+WARN_CRYOGENIC_RISK = (
+    "Kriyojenik bolgede sivi/kati riski var ({component_text}). "
+    "CoolProp PT flash bu bolgede kararsiz olabilir; sonuc yaklasiktir."
+)
+WARN_TWO_PHASE = "Iki fazli bolge tespit edildi. Faz-ozgul basinc kaybi korelasyonu henuz devrede degil."
+WARN_TWO_PHASE_ENVELOPE = (
+    "CoolProp PT flash dogrudan cozulmedi; faz zarfi kullanilarak iki fazli bolge tespit edildi."
+)
+WARN_LOW_TEMP_SOLID = (
+    "Bazi bilesenler uclu nokta sicakliginin altinda ({component_text}); "
+    "kati faz riski nedeniyle CoolProp faz flash'i desteklenmedi."
+)
+WARN_PT_NOT_SOLVED = (
+    "CoolProp faz flash'i bu PT noktasinda cozulmedi. "
+    "Faz zarfi disi veya metastabil bolge nedeniyle sonuc tek-faz varsayimiyla yorumlanmalidir."
+)
+WARN_PHASE_UNKNOWN = "Faz belirlenemedi. Hesap tek faz varsayimlariyla yorumlanmalidir."
+
+
 class GasFlowCalculator:
     def __init__(self):
         self.log_callback = None
-        # Standart yoğunluk cache’i: (gaz_taple, kütüp) -> kg/m3
         self._std_density_cache = {}
-        # Termodinamik özellik cache’i: (P, T, gaz_tuple, kutuphane) -> props_dict
         self._thermo_cache = {}
         self._phase_envelope_cache = {}
+        self._triple_point_cache = {}
+        self._cache_lock = threading.Lock()
+        self._cache_hits = 0
+        self._last_composition_hash = None
 
     def set_log_callback(self, callback):
         """Log mesajlarını dışarıya (örn. GUI) iletmek için callback fonksiyonu."""
@@ -56,192 +126,208 @@ class GasFlowCalculator:
         if self.log_callback:
             self.log_callback(message, level)
 
-    def clear_thermo_cache(self):
-        """Her yeni hesaplama başlangıcında cache'i temizle."""
-        self._thermo_cache.clear()
-        self._std_density_cache.clear()
-        self._phase_envelope_cache.clear()
+    def clear_thermo_cache(self, mole_fractions=None):
+        with self._cache_lock:
+            force_clear = True
+            if mole_fractions is not None:
+                comp_hash = self._composition_key(mole_fractions)
+                if comp_hash == self._last_composition_hash:
+                    force_clear = False
+                else:
+                    self._last_composition_hash = comp_hash
+            if force_clear:
+                self._thermo_cache.clear()
+                self._std_density_cache.clear()
+                self._phase_envelope_cache.clear()
+                self._triple_point_cache.clear()
+                self._cache_hits = 0
 
-    # --- YARDIMCI FONKSİYONLAR ---
-    def validate_inputs(self, inputs):
-        """Temel giriş doğrulama."""
-        if not inputs.get("mole_fractions"): raise ValueError("Gaz bileşimi boş olamaz.")
-        if inputs.get("P_in") < 0: raise ValueError("Giriş basıncı negatif olamaz.")
-        if inputs.get("T") <= 0: raise ValueError("Sıcaklık pozitif olmalıdır.")
-        return True
-
-    def normalize_gas_name(self, gas):
-        text = str(gas).strip()
-        canonical = _GAS_NAME_LOOKUP.get(text.casefold())
-        if not canonical and "(" in text:
-            canonical = _GAS_NAME_LOOKUP.get(text.split("(", 1)[0].strip().casefold())
-        if canonical:
-            return canonical
-        raise ValueError(f"Desteklenmeyen gaz tanimi: {gas}")
-
-    def normalize_mole_fractions(self, mole_fractions):
-        normalized = {}
-        for gas, fraction in mole_fractions.items():
-            canonical = self.normalize_gas_name(gas)
-            normalized[canonical] = normalized.get(canonical, 0.0) + float(fraction)
-
-        total = sum(normalized.values())
-        if total <= 0:
-            raise ValueError("Gaz bilesimi bos olamaz.")
-
-        return {gas: value / total for gas, value in normalized.items()}
-
-    def is_mass_flow_unit(self, flow_unit):
-        return str(flow_unit).strip().casefold() == "kg/s"
-
-    def calculate_mass_flow_rate(self, flow_rate, flow_unit, standard_density):
-        """Normalize any supported flow input to kg/s."""
-        if self.is_mass_flow_unit(flow_unit):
-            return float(flow_rate)
-        return (float(flow_rate) / 3600.0) * standard_density
-
-    def mass_to_mole_fraction(self, mass_fractions):
-        total_moles = 0.0; moles = {}
-        for gas, mass_frac in mass_fractions.items():
-            canonical = self.normalize_gas_name(gas)
-            try: MW = cp_propssi('M', canonical)
-            except Exception as e: raise ValueError(f"{gas} için moleküler ağırlık alınamadı: {str(e)}")
-            moles[canonical] = mass_frac / MW; total_moles += moles[canonical]
-        if total_moles == 0: raise ValueError("Toplam mol sıfır!")
-        return {gas: mole / total_moles for gas, mole in moles.items()}
-
-    def get_friction_factor(self, Re, relative_roughness):
-        if Re < 2000: return 64 / Re
-        else:
-            # Colebrook-White denklemi iteratif çözüm 
-            f_old = 0.02
-            for _ in range(20):
-                inner = (relative_roughness / 3.7) + (2.51 / (Re * math.sqrt(f_old)))
-                f_new = (-2 * math.log10(inner)) ** -2
-                if abs(f_new - f_old) < 1e-6: return f_new
-                f_old = f_new
-            return f_old
-
-    def get_churchill_friction_factor(self, Re, relative_roughness):
-        if Re <= 0:
-            return 0.0
-        if Re < 2000:
-            return 64.0 / Re
-
-        A = (2.457 * math.log(1.0 / (((7.0 / Re) ** 0.9) + 0.27 * relative_roughness))) ** 16
-        B = (37530.0 / Re) ** 16
-        return 8.0 * (((8.0 / Re) ** 12) + ((A + B) ** -1.5)) ** (1.0 / 12.0)
-
-    # --- TERMODİNAMİK MODELLER ---
-    def get_pure_component_props(self, gas_id):
-        gas_id = self.normalize_gas_name(gas_id)
-        try:
-            return {
-                'Tc': cp_propssi('TCRIT', gas_id), 'Pc': cp_propssi('PCRIT', gas_id),
-                'omega': cp_propssi('ACENTRIC', gas_id), 'MW': cp_propssi('M', gas_id) * 1000
-            }
-        except Exception as e:
-            # GÜVENLİK DÜZELTMESİ: Varsayılan değer atamak yerine hata fırlatıyoruz.
-            raise ValueError(f"CoolProp hatası ({gas_id}): Kritik özellikler alınamadı. {str(e)}")
-
-    def calculate_cubic_eos_props(self, P, T, mole_fractions, EOS_type):
-        mole_fractions = self.normalize_mole_fractions(mole_fractions)
-        self.log(f"Hesaplama: {EOS_type} modeli kullanılıyor.", "DEBUG")
-        A_c, B_c = (0.45724, 0.07780) if EOS_type == "PR" else (0.42748, 0.08664)
-        kappa_coeffs = (0.37464, 1.54226, -0.26992) if EOS_type == "PR" else (0.48, 1.574, -0.176)
-        
-        b_mix = 0; sqrt_a_mix = 0; MW_mix = 0
-        
-        for gas, y in mole_fractions.items():
-            props = self.get_pure_component_props(gas)
-            
-            omega = props['omega']
-            kappa = kappa_coeffs[0] + kappa_coeffs[1] * omega + kappa_coeffs[2] * omega**2
-            
-            alpha = (1 + kappa * (1 - math.sqrt(T / props['Tc'])))**2
-            a_i = A_c * (R_J_mol_K * props['Tc'])**2 / props['Pc'] * alpha
-            b_i = B_c * R_J_mol_K * props['Tc'] / props['Pc']
-
-            b_mix += y * b_i
-            sqrt_a_mix += y * math.sqrt(a_i)
-            MW_mix += y * props['MW']
-
-        a_mix = sqrt_a_mix**2
-        
-        A = a_mix * P / (R_J_mol_K * T)**2
-        B = b_mix * P / (R_J_mol_K * T)
-        
-        if EOS_type == "PR":
-            coeffs = [1, (B - 1), (A - 3*B**2 - 2*B), (-A*B + B**2 + B**3)]
-        else:
-            coeffs = [1, -1, (A - B - B**2), -A*B]
-        
-        roots = np.roots(coeffs)
-        real_roots = roots[np.isreal(roots)].real
-
-        if len(real_roots) == 0:
-            raise ValueError(f"{EOS_type} modelinde P={P/1e5:.1f} bara, T={T:.1f} K noktasında gerçek kök bulunamadı.")
-
-        Z = max(real_roots)
-        
-        density = (P * MW_mix * 1e-3) / (Z * R_J_mol_K * T)
-        standard_density = (101325 * MW_mix * 1e-3) / (1.0 * R_J_mol_K * 288.15) 
-        viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04) # Basit tahmin
-
-        Cp_mix, Cv_mix = 0, 0
-        for gas, y in mole_fractions.items():
+    def _cache_put(self, cache, key, value, maxsize=THERMO_CACHE_MAXSIZE):
+        if maxsize and len(cache) >= maxsize:
             try:
-                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
-                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
-                Cp_mix += y * cp_i
-                Cv_mix += y * cv_i
-            except ValueError:
-                Cp_mix += y * 2.0; Cv_mix += y * 1.6
-        if Cv_mix == 0: Cv_mix = 1.0
-        k_avg = Cp_mix / Cv_mix
-        Cv_mix = Cp_mix / k_avg
+                cache.pop(next(iter(cache)))
+            except StopIteration:
+                pass
+        cache[key] = value
 
-        # Sonic Velocity Check (Ideal Gas Approx with Z)
-        gamma = k_avg if k_avg > 0 else 1.3
-        sonic_velocity = math.sqrt(gamma * Z * R_J_mol_K * T / (MW_mix * 1e-3))
-        
-        return {
-            "MW": MW_mix, "Cp": Cp_mix, "Cv": Cv_mix, "Z": Z, "density": density,
-            "viscosity": viscosity, "standard_density": standard_density,
-            "EOS_model": EOS_type,
-            "sonic_velocity": sonic_velocity
-        }
-
-    def create_coolprop_state(self, mole_fractions):
-        """CoolProp AbstractState nesnesi oluşturur (Performans için)."""
-        try:
-            backend = "HEOS"
-            normalized = self.normalize_mole_fractions(mole_fractions)
-            fluids = list(normalized.keys())
-            fractions = list(normalized.values())
-            
-            # Gaz isimlerini CoolProp formatına uygun hale getir (örn. "Methane (CH4)" -> "Methane")
-            # Ancak data.py'da zaten CoolProp isimleri anahtar olarak kullanılıyor (örn. "METHANE" -> "Methane (CH4)")
-            # Wait, data.py keys are "METHANE", values are "Methane (CH4)".
-            # But inputs['mole_fractions'] keys come from data.py keys?
-            # Let's check main.py add_gas_component.
-            # It uses gas_id which is the key (e.g. "METHANE").
-            # But CoolProp needs "Methane".
-            # I need a mapping from ID to CoolProp Name.
-            # In data.py: "METHANE": "Methane (CH4)".
-            # CoolProp expects "Methane".
-            # I should probably clean the names.
-            
-            state = cp_abstract_state(backend, "&".join(fluids))
-            state.set_mole_fractions(fractions)
-            return state
-        except Exception as e:
-            self.log(f"CoolProp State Oluşturma Hatası: {e}", "ERROR")
-            return None
+    def _composition_key(self, mole_fractions):
+        items = sorted((k, round(v, 6)) for k, v in mole_fractions.items() if v > 0)
+        return tuple(items)
 
     def build_mixture_string(self, mole_fractions):
         normalized = self.normalize_mole_fractions(mole_fractions)
         return "&".join([f"{gas}[{fraction:.6f}]" for gas, fraction in normalized.items()])
+
+    def normalize_mole_fractions(self, mole_fractions):
+        total_moles = 0.0
+        moles = {}
+        for gas, fraction in mole_fractions.items():
+            val = float(fraction) if fraction else 0.0
+            if val > 0:
+                canonical = self.normalize_gas_name(gas)
+                moles[canonical] = moles.get(canonical, 0.0) + val
+                total_moles += val
+        if total_moles <= 0:
+            raise ValueError("Toplam mol sifir!")
+        return {k: v / total_moles for k, v in moles.items()}
+
+    def normalize_gas_name(self, gas):
+        key = str(gas).strip().casefold()
+        canonical = _GAS_NAME_LOOKUP.get(key)
+        if canonical is None:
+            unicode_sub_map = str.maketrans(
+                "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089",
+                "0123456789"
+            )
+            key = key.translate(unicode_sub_map)
+            for k, v in _GAS_NAME_LOOKUP.items():
+                if k.translate(unicode_sub_map) == key:
+                    return v
+        if canonical is None:
+            raise ValueError(f"Desteklenmeyen gaz tanimi: {gas}")
+        return canonical
+
+    def validate_inputs(self, inputs):
+        if not inputs.get("mole_fractions"):
+            raise ValueError("Gaz bilesimi bos olamaz.")
+        if inputs.get("P_in", 0) < 0:
+            raise ValueError("Giris basinci negatif olamaz.")
+        if inputs.get("T", 0) <= 0:
+            raise ValueError("Sicaklik pozitif olmalidir.")
+        if inputs.get("flow_rate", 0) <= 0:
+            raise ValueError("Debi pozitif olmalidir.")
+
+    def mass_to_mole_fraction(self, mass_fractions):
+        mw_map = {}
+        mole_sum = 0.0
+        for gas, mass_pct in mass_fractions.items():
+            canonical = self.normalize_gas_name(gas)
+            gas_id = COOLPROP_GASES[canonical]["id"]
+            try:
+                MW = float(cp_propssi('M', gas_id)) * 1000
+            except Exception:
+                MW = 16.04
+            mw_map[canonical] = MW
+            mole_sum += mass_pct / MW
+        return {
+            gas: (mass_pct / mw_map[gas]) / mole_sum
+            for gas, mass_pct in mass_fractions.items() if mass_pct > 0
+        }
+
+    def is_mass_flow_unit(self, flow_unit):
+        return flow_unit in ("kg/s", "kg/h", "lb/s", "lb/h")
+
+    def calculate_mass_flow_rate(self, flow_rate, flow_unit, standard_density):
+        if self.is_mass_flow_unit(flow_unit):
+            if "h" in flow_unit:
+                return float(flow_rate) / 3600.0
+            return float(flow_rate)
+        if "h" in flow_unit:
+            return (float(flow_rate) / 3600.0) * standard_density
+        return float(flow_rate) * standard_density
+
+    def get_friction_factor(self, Re, relative_roughness):
+        return self.get_churchill_friction_factor(Re, relative_roughness)
+
+    def get_churchill_friction_factor(self, Re, relative_roughness):
+        if Re <= 0:
+            self.log(f"Churchill: Gecersiz Reynolds sayisi ({Re}).", level="WARNING")
+            return 0.02
+        A = (2.457 * math.log(1.0 / ((relative_roughness / 3.7) ** 1.11 + (relative_roughness / 0.27 * (relative_roughness / 37530.0 + 1.0) ** (16 / 12.0)) ** (12.0 / 16.0)))) ** 16
+        B = (37530.0 / Re) ** 16
+        f_churchill = 8.0 * ((8.0 / Re) ** 12.0 + 1.0 / (A + B) ** 1.5) ** (1.0 / 12.0)
+        return f_churchill
+
+    def get_pure_component_props(self, gas_id):
+        try:
+            props = {
+                'Tc': cp_propssi('Tcrit', gas_id),
+                'Pc': cp_propssi('Pcrit', gas_id),
+                'omega': cp_propssi('ACENTRIC', gas_id),
+                'MW': cp_propssi('M', gas_id) * 1000
+            }
+            return props
+        except Exception as e:
+            raise ValueError(f"CoolProp hatasi ({gas_id}): Kritik ozellikler alinamadi. {str(e)}")
+
+    def calculate_cubic_eos_props(self, P, T, mole_fractions, EOS_type):
+        self.log(f"Hesaplama: {EOS_type} modeli kullaniliyor.")
+        A_c, B_c = (0.45724, 0.07780) if EOS_type == "PR" else (0.42748, 0.08664)
+        kappa_coeffs = (0.37464, 1.54226, -0.26992) if EOS_type == "PR" else (0.48, 1.574, -0.176)
+
+        components = []
+        for gas, y in self.normalize_mole_fractions(mole_fractions).items():
+            props = self.get_pure_component_props(gas)
+            Tr = T / props['Tc']
+            kappa = kappa_coeffs[0] + kappa_coeffs[1] * props['omega'] + kappa_coeffs[2] * props['omega'] ** 2
+            alpha = (1.0 + kappa * (1.0 - math.sqrt(Tr))) ** 2
+            a_i = A_c * (alpha * (R_J_MOL_K ** 2) * (props['Tc'] ** 2)) / props['Pc']
+            b_i = B_c * (R_J_MOL_K * props['Tc']) / props['Pc']
+            components.append({'gas': gas, 'y': y, 'Tc': props['Tc'], 'Pc': props['Pc'],
+                              'MW': props['MW'], 'a_i': a_i, 'b_i': b_i, 'omega': props['omega']})
+
+        a_mix = 0.0
+        b_mix = 0.0
+        n = len(components)
+        for i in range(n):
+            b_mix += components[i]['y'] * components[i]['b_i']
+            for j in range(n):
+                a_mix += components[i]['y'] * components[j]['y'] * math.sqrt(components[i]['a_i'] * components[j]['a_i'])
+
+        A = a_mix * P / (R_J_MOL_K ** 2 * T ** 2)
+        B = b_mix * P / (R_J_MOL_K * T)
+        a2 = B - 1
+        a1 = A - 3 * B ** 2 - 2 * B
+        a0 = -A * B + B ** 2 + B ** 3
+        roots = solve_cubic(a2, a1, a0)
+        Z = max(roots)
+        if Z <= 0:
+            raise ValueError(f"{EOS_type} modelinde P={P / BAR_TO_PA:.1f} bara, T={T:.1f} K noktasinda gercek kok bulunamadi.")
+
+        MW_mix = sum(c['y'] * c['MW'] for c in components)
+        density = (P * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (Z * R_J_MOL_K * T)
+        standard_density = (STD_PRESSURE_PA * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (1.0 * R_J_MOL_K * STD_TEMP_K)
+
+        viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04)
+        Cp_mix = 0.0
+        Cv_mix = 0.0
+        for c in components:
+            try:
+                gas_id = COOLPROP_GASES.get(c['gas'], {}).get("id", c['gas'])
+                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas_id) / 1000
+                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas_id) / 1000
+            except Exception:
+                cp_i = 2.0
+                cv_i = 1.6
+            Cp_mix += c['y'] * cp_i
+            Cv_mix += c['y'] * cv_i
+
+        gamma = Cp_mix / Cv_mix if Cv_mix > 0 else 1.3
+        sonic_velocity = math.sqrt(gamma * Z * R_J_MOL_K * T / (MW_mix * G_PER_MOL_TO_KG_PER_MOL))
+        return {
+            "MW": MW_mix, "Cp": Cp_mix, "Cv": Cv_mix, "Z": Z,
+            "density": density, "viscosity": viscosity,
+            "standard_density": standard_density,
+            "viscosity_fallback": True, "thermo_fallback": True,
+            "sonic_velocity": sonic_velocity,
+        }
+
+    def create_coolprop_state(self, mole_fractions):
+        normalized = self.normalize_mole_fractions(mole_fractions)
+        if len(normalized) == 0:
+            return None
+        try:
+            fluids = []
+            fractions = []
+            for gas, fraction in normalized.items():
+                gas_id = COOLPROP_GASES.get(gas, {}).get("id", gas)
+                fluids.append(gas_id)
+                fractions.append(fraction)
+            state = cp_abstract_state("HEOS", "&".join(fluids))
+            state.set_mole_fractions(fractions)
+            return state
+        except Exception:
+            return None
 
     def _phase_envelope_key(self, mole_fractions):
         normalized = self.normalize_mole_fractions(mole_fractions)
@@ -249,8 +335,9 @@ class GasFlowCalculator:
 
     def _get_phase_envelope_summary(self, mole_fractions):
         key = self._phase_envelope_key(mole_fractions)
-        if key in self._phase_envelope_cache:
-            return self._phase_envelope_cache[key]
+        with self._cache_lock:
+            if key in self._phase_envelope_cache:
+                return self._phase_envelope_cache[key]
 
         normalized = dict(key)
         if len(normalized) <= 1:
@@ -272,17 +359,25 @@ class GasFlowCalculator:
                 self.log(f"Phase envelope olusturulamadi: {exc}", "WARNING")
                 summary = None
 
-        self._phase_envelope_cache[key] = summary
+        with self._cache_lock:
+            self._phase_envelope_cache[key] = summary
         return summary
 
     def _get_components_below_triple_point(self, mole_fractions, T):
         normalized = self.normalize_mole_fractions(mole_fractions)
         components = []
         for gas, fraction in normalized.items():
-            try:
-                triple_T = float(cp_propssi("TTRIPLE", gas))
-            except Exception:
-                continue
+            triple_T = None
+            with self._cache_lock:
+                if gas in self._triple_point_cache:
+                    triple_T = self._triple_point_cache[gas]
+            if triple_T is None:
+                try:
+                    triple_T = float(cp_propssi("TTRIPLE", gas))
+                except Exception:
+                    continue
+                with self._cache_lock:
+                    self._cache_put(self._triple_point_cache, gas, triple_T)
             if T + 1e-6 < triple_T:
                 components.append({
                     "gas": gas,
@@ -357,8 +452,8 @@ class GasFlowCalculator:
             try:
                 try:
                     state.unspecify_phase()
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.log(f"unspecify_phase basarisiz: {e}", level="WARNING")
                 state.update(CP.PT_INPUTS, P, T)
                 phase_code = int(state.phase())
                 quality_value = state.Q()
@@ -401,7 +496,7 @@ class GasFlowCalculator:
         if phase_code in (CP.iphase_gas, CP.iphase_supercritical_gas):
             phase_info = {
                 "phase": "gas",
-                "phase_label_tr": "Tek Fazli Gaz",
+                "phase_label_tr": PHASE_LABEL_GAS,
                 "vapor_quality": None,
                 "warning_level": "ok",
                 "warning_msg_tr": "",
@@ -414,14 +509,10 @@ class GasFlowCalculator:
         if phase_code in (CP.iphase_liquid, CP.iphase_supercritical_liquid):
             phase_info = {
                 "phase": "liquid",
-                "phase_label_tr": "Tek Fazli Sivi",
+                "phase_label_tr": PHASE_LABEL_LIQUID,
                 "vapor_quality": None,
                 "warning_level": "warning",
-                "warning_msg_tr": (
-                    "Sivi faz tespit edildi. Darcy-Weisbach, Churchill surtunme faktoru ve "
-                    "yogunluk degisimine bagli ivmelenme duzeltmesi kullanildi. "
-                    "Kot farki girdisi olmadigi icin yercekimi terimi hesaba dahil edilmedi."
-                ),
+                "warning_msg_tr": WARN_LIQUID_DETECTED,
                 "phase_code": phase_code,
             }
             if envelope_hint:
@@ -430,10 +521,7 @@ class GasFlowCalculator:
                 significant = [item["gas"] for item in low_temperature_components if item["fraction"] >= 0.01]
                 component_text = ", ".join(significant or [low_temperature_components[0]["gas"]])
                 phase_info["warning_level"] = "critical"
-                phase_info["warning_msg_tr"] = (
-                    f"Kriyojenik bolgede sivi/kati riski var ({component_text}). "
-                    "CoolProp PT flash bu bolgede kararsiz olabilir; sonuc yaklasiktir."
-                )
+                phase_info["warning_msg_tr"] = WARN_CRYOGENIC_RISK.format(component_text=component_text)
                 phase_info["solid_risk_components"] = low_temperature_components
             return phase_info
 
@@ -443,23 +531,21 @@ class GasFlowCalculator:
                 warning_level = "critical"
             phase_info = {
                 "phase": "two_phase",
-                "phase_label_tr": "Iki Fazli (Gaz + Sivi Karisimi)",
+                "phase_label_tr": PHASE_LABEL_TWO_PHASE,
                 "vapor_quality": vapor_quality,
                 "warning_level": warning_level,
-                "warning_msg_tr": "Iki fazli bolge tespit edildi. Faz-ozgul basinc kaybi korelasyonu henuz devrede degil.",
+                "warning_msg_tr": WARN_TWO_PHASE,
                 "phase_code": phase_code,
             }
             if envelope_hint:
                 phase_info["phase_detection_source"] = "envelope"
-                phase_info["warning_msg_tr"] = (
-                    "CoolProp PT flash dogrudan cozulmedi; faz zarfi kullanilarak iki fazli bolge tespit edildi."
-                )
+                phase_info["warning_msg_tr"] = WARN_TWO_PHASE_ENVELOPE
             return phase_info
 
         if phase_code in (CP.iphase_supercritical, CP.iphase_critical_point):
             return {
                 "phase": "supercritical",
-                "phase_label_tr": "Superkritik",
+                "phase_label_tr": PHASE_LABEL_SUPERCRITICAL,
                 "vapor_quality": None,
                 "warning_level": "ok",
                 "warning_msg_tr": "",
@@ -469,21 +555,15 @@ class GasFlowCalculator:
         if low_temperature_components:
             significant = [item["gas"] for item in low_temperature_components if item["fraction"] >= 0.01]
             component_text = ", ".join(significant or [low_temperature_components[0]["gas"]])
-            warning_message = (
-                f"Bazi bilesenler uclu nokta sicakliginin altinda ({component_text}); "
-                "kati faz riski nedeniyle CoolProp faz flash'i desteklenmedi."
-            )
+            warning_message = WARN_LOW_TEMP_SOLID.format(component_text=component_text)
         elif fallback_reason:
-            warning_message = (
-                "CoolProp faz flash'i bu PT noktasinda cozulmedi. "
-                "Faz zarfi disi veya metastabil bolge nedeniyle sonuc tek-faz varsayimiyla yorumlanmalidir."
-            )
+            warning_message = WARN_PT_NOT_SOLVED
         else:
-            warning_message = "Faz belirlenemedi. Hesap tek faz varsayimlariyla yorumlanmalidir."
+            warning_message = WARN_PHASE_UNKNOWN
 
         phase_info = {
             "phase": "unknown",
-            "phase_label_tr": "Belirsiz",
+            "phase_label_tr": PHASE_LABEL_UNKNOWN,
             "vapor_quality": vapor_quality,
             "warning_level": "critical" if low_temperature_components else "warning",
             "warning_msg_tr": warning_message,
@@ -504,16 +584,16 @@ class GasFlowCalculator:
 
         if phase == "two_phase":
             info["formula_mode"] = "two_phase"
-            info["formula_label_tr"] = "Lockhart-Martinelli Iki Fazli Korelasyon"
+            info["formula_label_tr"] = FORMULA_LABEL_LM
         elif phase == "liquid":
             info["formula_mode"] = "single_phase_liquid"
-            info["formula_label_tr"] = "Darcy-Weisbach + Churchill f + Ivmelenme Duzeltmesi"
+            info["formula_label_tr"] = FORMULA_LABEL_DW_CHURCHILL
         elif normalize_flow_mode(flow_mode) == FLOW_MODE_INCOMPRESSIBLE:
             info["formula_mode"] = "single_phase_incompressible_gas"
-            info["formula_label_tr"] = "Darcy-Weisbach (Sabit Yogunluk)"
+            info["formula_label_tr"] = FORMULA_LABEL_DW_INCOMPRESSIBLE
         else:
             info["formula_mode"] = "single_phase_gas"
-            info["formula_label_tr"] = "Darcy-Weisbach (Sikistirilabilir Gaz)"
+            info["formula_label_tr"] = FORMULA_LABEL_DW_COMPRESSIBLE
 
         return info
 
@@ -562,6 +642,8 @@ class GasFlowCalculator:
         friction_model="colebrook",
     ):
         velocity = mass_flow / (density * area) if density > 0 else 0.0
+        if density <= 0:
+            self.log("_single_phase_segment_loss: Yogunluk <= 0, segment atlaniyor.", level="WARNING")
         if velocity <= 0 or viscosity <= 0:
             return {
                 "dp_total": 0.0,
@@ -644,15 +726,16 @@ class GasFlowCalculator:
         }
 
     def _get_std_density(self, mixture):
-        """Standart yoğunluğu cache’den al veya hesapla.
-        101325 Pa, 288.15 K değişmediğinden her hesaplama için 1 kere yeterli."""
-        if mixture not in self._std_density_cache:
-            try:
-                d = cp_propssi('D', 'P', 101325, 'T', 288.15, mixture)
-            except Exception:
-                d = 0.0
-            self._std_density_cache[mixture] = d
-        return self._std_density_cache[mixture]
+        """Standart yoğunluğu cache'den al veya hesapla.
+        STD_PRESSURE_PA Pa, STD_TEMP_K K değişmediğinden her hesaplama için 1 kere yeterli."""
+        with self._cache_lock:
+            if mixture not in self._std_density_cache:
+                try:
+                    d = cp_propssi('D', 'P', STD_PRESSURE_PA, 'T', STD_TEMP_K, mixture)
+                except Exception:
+                    d = 0.0
+                self._std_density_cache[mixture] = d
+            return self._std_density_cache[mixture]
 
     def _state_phase_candidates(self, phase_hint, low_temperature_components):
         if phase_hint == "gas":
@@ -668,8 +751,8 @@ class GasFlowCalculator:
     def _update_state_with_phase_fallback(self, state, P, T, mole_fractions, phase_info=None):
         try:
             state.unspecify_phase()
-        except Exception:
-            pass
+        except Exception as e:
+            self.log(f"unspecify_phase (fallback) basarisiz: {e}", level="WARNING")
 
         try:
             state.update(CP.PT_INPUTS, P, T)
@@ -689,8 +772,8 @@ class GasFlowCalculator:
                 try:
                     try:
                         state.unspecify_phase()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        self.log(f"unspecify_phase (candidate {imposed_phase}) basarisiz: {e}", level="DEBUG")
                     state.specify_phase(imposed_phase)
                     state.update(CP.PT_INPUTS, P, T)
                     return {"mode": "imposed", "imposed_phase": imposed_phase}
@@ -733,8 +816,8 @@ class GasFlowCalculator:
                 split_props = self._phase_split_properties(P, T, mole_fractions, state)
                 split_props["approximate"] = False
                 return split_props
-        except Exception:
-            pass
+        except Exception as e:
+            self.log(f"Iki faz PT split cozulmedi, yaklasik split kullanilacak: {e}", level="WARNING")
 
         self.log(
             "CoolProp iki faz PT split cozulmedi; gaz/sivi dallari ile yaklasik split kullaniliyor.",
@@ -744,10 +827,10 @@ class GasFlowCalculator:
 
     def calculate_coolprop_properties(self, P, T, mixture, state=None, mole_fractions=None):
         # Termodinamik özellik cache’i: aynı (P, T, mixture) üçlüsü için tekrar hesaplama
-        cache_key = (round(P, 1), round(T, 4), mixture)
-        if cache_key in self._thermo_cache:
-            return self._thermo_cache[cache_key]
-        
+        cache_key = (round(P, -2), round(T, 2), mixture)
+        with self._cache_lock:
+            if cache_key in self._thermo_cache:
+                return self._thermo_cache[cache_key]
         viscosity_fallback = False
 
         # —— Standart yoğunluk: cache’den ——
@@ -779,7 +862,7 @@ class GasFlowCalculator:
                     sonic_velocity = state.speed_sound()
                 except ValueError:
                     gamma = Cp / Cv if Cv > 0 else 1.3
-                    sonic_velocity = math.sqrt(gamma * Z * R_J_mol_K * T / (MW_mix * 1e-3))
+                    sonic_velocity = math.sqrt(gamma * Z * R_J_MOL_K * T / (MW_mix * G_PER_MOL_TO_KG_PER_MOL))
                 
             except ValueError as e:
                  if mole_fractions is not None:
@@ -792,7 +875,8 @@ class GasFlowCalculator:
                      props["viscosity_fallback"] = True
                      props["thermo_fallback"] = True
                      props["fallback_reason"] = str(e)
-                     self._thermo_cache[cache_key] = props
+                     with self._cache_lock:
+                         self._cache_put(self._thermo_cache, cache_key, props)
                      return props
                  return self.calculate_coolprop_properties(P, T, mixture, state=None, mole_fractions=None)
         else:
@@ -816,7 +900,7 @@ class GasFlowCalculator:
                 sonic_velocity = cp_propssi('A', 'P', P, 'T', T, mixture)
             except ValueError:
                 gamma = Cp / Cv if Cv > 0 else 1.3
-                sonic_velocity = math.sqrt(gamma * Z * R_J_mol_K * T / (MW_mix * 1e-3))
+                sonic_velocity = math.sqrt(gamma * Z * R_J_MOL_K * T / (MW_mix * G_PER_MOL_TO_KG_PER_MOL))
 
         props = {
             "MW": MW_mix, "Cp": Cp, "Cv": Cv, "Z": Z,
@@ -826,8 +910,8 @@ class GasFlowCalculator:
             "thermo_fallback": thermo_fallback,
             "sonic_velocity": sonic_velocity
         }
-        # Cache'e kaydet (cache_key yukarıda tanımlandı)
-        self._thermo_cache[cache_key] = props
+        with self._cache_lock:
+            self._cache_put(self._thermo_cache, cache_key, props)
         return props
 
     def calculate_pseudo_critical_properties(self, P, T, mole_fractions):
@@ -855,7 +939,9 @@ class GasFlowCalculator:
             rho_r = 0.27 * Pr / Tr # Ideal gas approximation
 
             # Newton-Raphson Iteration
-            for _ in range(20):
+            for _ in range(DAK_NR_MAX_ITER):
+                if rho_r <= 0:
+                    rho_r = 0.27 * Pr / Tr
                 R1 = A1 + A2/Tr + A3/Tr**3 + A4/Tr**4 + A5/Tr**5
                 R2 = 0.27 * Pr / Tr
                 R3 = A6 + A7/Tr + A8/Tr**2
@@ -872,16 +958,19 @@ class GasFlowCalculator:
                 
                 df = R1 + R2/rho_r**2 + 2*R3*rho_r - 5*R4*rho_r**4 + d_term_exp
                 
-                if abs(df) < 1e-6: break
+                if abs(df) < 1e-10:
+                    break
                 rho_r_new = rho_r - f / df
-                if abs(rho_r_new - rho_r) < 1e-6:
+                if rho_r_new <= 0:
+                    rho_r_new = 0.27 * Pr / Tr
+                if abs(rho_r_new - rho_r) < 1e-8:
                     rho_r = rho_r_new; break
                 rho_r = rho_r_new
                 
             Z = (0.27 * Pr) / (rho_r * Tr) if rho_r > 0 else 1.0
             
-        density = (P * MW_mix * 1e-3) / (Z * R_J_mol_K * T)
-        standard_density = (101325 * MW_mix * 1e-3) / (1.0 * R_J_mol_K * 288.15) 
+        density = (P * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (Z * R_J_MOL_K * T)
+        standard_density = (STD_PRESSURE_PA * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (1.0 * R_J_MOL_K * STD_TEMP_K) 
         
         # Lee-Gonzalez-Eakin Viscosity Correlation
         # API Technical Data Book Procedure 11A4.1
@@ -902,8 +991,8 @@ class GasFlowCalculator:
         Cp_mix, Cv_mix = 0, 0
         for gas, y in mole_fractions.items():
             try:
-                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', 101325, gas) / 1000
-                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', 101325, gas) / 1000
+                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas) / 1000
+                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas) / 1000
                 Cp_mix += y * cp_i
                 Cv_mix += y * cv_i
             except ValueError:
@@ -916,7 +1005,7 @@ class GasFlowCalculator:
         # Sonic Velocity Check (Ideal Gas Approx with Z)
         # c = sqrt(k * Z * R * T / MW)
         gamma = k_avg
-        sonic_velocity = math.sqrt(gamma * Z * R_J_mol_K * T / (MW_mix * 1e-3))
+        sonic_velocity = math.sqrt(gamma * Z * R_J_MOL_K * T / (MW_mix * G_PER_MOL_TO_KG_PER_MOL))
 
         return {
             "MW": MW_mix, "Cp": Cp_mix, "Cv": Cv_mix, "Z": Z, "density": density,
@@ -993,6 +1082,7 @@ class GasFlowCalculator:
         total_pipe_loss = 0.0
         total_fitting_loss = 0.0
         total_acceleration_loss = 0.0
+        pressure_clamped = False
         first_two_phase_info = phase_info_inlet if phase_info_inlet["phase"] == "two_phase" else None
         transition_to_two_phase_m = 0.0 if first_two_phase_info else None
         fixed_density = gas_props_in["density"]
@@ -1013,6 +1103,8 @@ class GasFlowCalculator:
                     m_dot, dL, D_m, A, relative_roughness, K_seg, split_props
                 )
                 P_next = max(MIN_PRESSURE_PA, P_current - segment["dp_total"])
+                if P_current - segment["dp_total"] < MIN_PRESSURE_PA and not pressure_clamped:
+                    pressure_clamped = True
             else:
                 props = self.calculate_thermo_properties(P_current, T, mole_fractions, library_choice, cp_state)
                 density = props["density"]
@@ -1033,6 +1125,8 @@ class GasFlowCalculator:
                     friction_model="churchill" if liquid_phase else "colebrook",
                 )
                 P_next = max(MIN_PRESSURE_PA, P_current - segment["dp_total"])
+                if P_current - segment["dp_total"] < MIN_PRESSURE_PA and not pressure_clamped:
+                    pressure_clamped = True
                 if liquid_phase:
                     for _ in range(2):
                         next_props = self.calculate_thermo_properties(P_next, T, mole_fractions, library_choice, cp_state)
@@ -1146,6 +1240,7 @@ class GasFlowCalculator:
             "choked_status": choked_flow_status,
             "flow_mode": flow_mode,
             "phase_info": phase_info,
+            "pressure_clamped": pressure_clamped,
         }
 
     def calculate_max_length(self, inputs):
@@ -1531,21 +1626,21 @@ class GasFlowCalculator:
             # Sonuçları topla
             thicker_cand = schedules[1] if len(schedules) > 1 else None
             if 'thicker' in futures and thicker_cand:
-                res_thick = futures['thicker'].result()
+                res_thick = futures['thicker'].result(timeout=30)
                 thicker_cand['weight_per_m'] = calculate_pipe_weight_api5l(thicker_cand['OD_mm'], thicker_cand['t_mm'])
                 alternatives['thicker'] = {'pipe': thicker_cand, 'result': res_thick, 'note': 'Daha Kalın Etli (Aynı Çap)'}
 
             if current_nd_idx > 0 and 'thinner' in futures:
                 prev_schedules = sorted(grouped_pipes[sorted_nds[current_nd_idx - 1]], key=lambda x: x['t_mm'])
                 thinner_cand = prev_schedules[0]
-                res_thin = futures['thinner'].result()
+                res_thin = futures['thinner'].result(timeout=30)
                 thinner_cand['weight_per_m'] = calculate_pipe_weight_api5l(thinner_cand['OD_mm'], thinner_cand['t_mm'])
                 alternatives['thinner'] = {'pipe': thinner_cand, 'result': res_thin, 'note': 'Bir Alt Çap (Hız Limiti Aşıldı)'}
 
             if 'lowest_weight' in futures:
                 lightest_tuple = min(valid_candidates, key=lambda x: x[0]['weight_per_m'])
                 lightest = lightest_tuple[0]
-                res_light = futures['lowest_weight'].result()
+                res_light = futures['lowest_weight'].result(timeout=30)
                 alternatives['lowest_weight'] = {'pipe': lightest, 'result': res_light, 'note': 'En Düşük Ağırlıklı Boru'}
         
         if selected_pipe is None:

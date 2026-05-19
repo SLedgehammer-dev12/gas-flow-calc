@@ -1,5 +1,6 @@
 import tkinter as tk
 import json
+from datetime import datetime
 from tkinter import ttk, messagebox, filedialog, Menu, simpledialog
 from tkinter.scrolledtext import ScrolledText
 import threading
@@ -18,18 +19,25 @@ from data import COOLPROP_GASES, PIPE_MATERIALS, PIPE_ROUGHNESS, FITTING_K_FACTO
 from calculations import GasFlowCalculator
 from controllers import GasFlowController
 from reporting import format_max_length_report, format_min_diameter_report, format_pressure_drop_report
-from updater import Updater
+from updater import Updater, _obfuscate_token
 from translations import t, t_fitting, set_language, get_language, get_fitting_name_tr
 from ui.widgets import ToolTip, ValidationHelper, ValidatedEntry
 from ui.dialogs import show_about, show_user_guide, show_program_details
 from ui.schematic import SchematicDrawer
 from ui.graphs import show_graphs
 from flow_utils import (
+    FLOW_MODE_COMPRESSIBLE,
     FLOW_MODE_INCOMPRESSIBLE,
     get_flow_mode_label,
     normalize_flow_mode,
 )
-from target_utils import get_calc_target_label, normalize_calc_target
+from target_utils import (
+    TARGET_PRESSURE_DROP,
+    TARGET_MAX_LENGTH,
+    TARGET_MIN_DIAMETER,
+    get_calc_target_label,
+    normalize_calc_target,
+)
 from ui.panels.gas_panel import GasPanel
 from ui.panels.process_panel import ProcessPanel
 from ui.panels.pipe_panel import PipePanel
@@ -50,71 +58,10 @@ def load_language_from_config():
     try:
         cfg = load_app_config()
         set_language(cfg.get("language", "tr"))
-    except Exception:
-        pass
+    except Exception as e:
+        import traceback; traceback.print_exc()
 
 load_language_from_config()
-
-# UI themes
-THEME_PRESETS = {
-    "light": {
-        "bg": "#f0f3f8",
-        "card": "#ffffff",
-        "accent": "#1a237e",
-        "accent2": "#283593",
-        "accent_light": "#e8eaf6",
-        "txt_dark": "#1c2032",
-        "txt_mid": "#455a64",
-        "txt_light": "#78909c",
-        "success": "#2e7d32",
-        "warn": "#e65100",
-        "err": "#c62828",
-        "tab_idle": "#d1d8e6",
-        "button_bg": "#dde3ef",
-        "entry_focus": "#eef2ff",
-        "scrollbar": "#ced4da",
-        "border": "#dee2e6",
-        "gas_canvas": "#ffffff",
-    },
-    "dark": {
-        "bg": "#16202a",
-        "card": "#22303c",
-        "accent": "#7fb3ff",
-        "accent2": "#4f87d9",
-        "accent_light": "#2f4253",
-        "txt_dark": "#f3f7fb",
-        "txt_mid": "#c1d0de",
-        "txt_light": "#91a4b7",
-        "success": "#6bcf7d",
-        "warn": "#ffb86b",
-        "err": "#ff7a7a",
-        "tab_idle": "#314252",
-        "button_bg": "#304150",
-        "entry_focus": "#31485f",
-        "scrollbar": "#45596b",
-        "border": "#304150",
-        "gas_canvas": "#22303c",
-    },
-    "contrast": {
-        "bg": "#fffdf5",
-        "card": "#fffefb",
-        "accent": "#0b3d2e",
-        "accent2": "#135844",
-        "accent_light": "#dcefe7",
-        "txt_dark": "#111111",
-        "txt_mid": "#2f2f2f",
-        "txt_light": "#5d5d5d",
-        "success": "#136f3a",
-        "warn": "#b85c00",
-        "err": "#a61b1b",
-        "tab_idle": "#e5ece8",
-        "button_bg": "#e8efe8",
-        "entry_focus": "#f4faf7",
-        "scrollbar": "#c9d3cc",
-        "border": "#d6ddd8",
-        "gas_canvas": "#fffefb",
-    },
-}
 
 # --- Deleted ToolTip, ValidationHelper, ValidatedEntry (Moved to ui.widgets) ---
 
@@ -128,13 +75,10 @@ class GasFlowCalculatorApp:
 
         # Hesaplama Motoru
         self.calculator = GasFlowCalculator()
-        self.controller = GasFlowController()
         self.calculator.set_log_callback(self.log_message)
         # Güncelleme yöneticisi
         self.updater = Updater(self.log_message)
         self.last_download_path = None
-        self._startup_update_check_done = False
-        self.ui_theme = tk.StringVar(value=load_app_config().get("ui_theme", "light"))
 
         # Değişkenler
         self.gas_components = {}
@@ -165,7 +109,6 @@ class GasFlowCalculatorApp:
         
         # Menü Çubuğu
         self.create_menu()
-        self.apply_theme(self.ui_theme.get(), persist=False)
         
         # Şema Çizicisi (Bağlamaları kur)
         self.schematic_drawer = SchematicDrawer(self) 
@@ -185,8 +128,8 @@ class GasFlowCalculatorApp:
         
         self.log_message(f"{t('msg_program_started')}: V{APP_VERSION}")
         self.log_message(f"{t('msg_version')}: {APP_VERSION}")
-        # Açılışta otomatik güncelleme kontrolü
-        self.root.after(1500, self.silent_update_check)
+        # Arka planda sessiz güncelleme kontrolü
+        self.root.after(500, self.silent_update_check)
         
         # Güncelleme notlarını göster
         self.check_changelog()
@@ -194,7 +137,7 @@ class GasFlowCalculatorApp:
     def setup_default_state(self):
         """Uygulama açılışında istenen varsayılan değerleri ayarlar."""
         # Hesaplama Hedefini Min Çap Yap
-        self.calc_target.set(t("target_min_diameter"))
+        self.calc_target.set(TARGET_MIN_DIAMETER)
         
         # İstenen Gazları Ekle ve Değerlerini Gir
         defaults = {
@@ -218,8 +161,8 @@ class GasFlowCalculatorApp:
             dismissed_version = cfg.get("dismissed_release_notes_version")
             if dismissed_version != APP_VERSION:
                 self.root.after(1000, self.show_changelog_dialog)
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_message(f"Changelog kontrolu hatasi: {e}", level="ERROR")
 
     def show_changelog_dialog(self):
         language = get_language()
@@ -244,8 +187,8 @@ class GasFlowCalculatorApp:
                     cfg = load_app_config()
                     cfg["dismissed_release_notes_version"] = APP_VERSION
                     save_app_config(cfg)
-                except Exception:
-                    pass
+                except Exception as e:
+                    self.log_message(f"Changelog dismiss kayit hatasi: {e}", level="ERROR")
             top.destroy()
 
         btn = ttk.Button(top, text="Tamam / OK", command=on_close)
@@ -277,36 +220,8 @@ class GasFlowCalculatorApp:
         menubar.add_cascade(label=t("menu_language"), menu=lang_menu)
         lang_menu.add_command(label="🇹🇷 " + t("lang_turkish"), command=lambda: self.change_language("tr"))
         lang_menu.add_command(label="🇬🇧 " + t("lang_english"), command=lambda: self.change_language("en"))
-
-        view_menu = Menu(menubar, tearoff=0)
-        menubar.add_cascade(label=t("menu_view"), menu=view_menu)
-        view_menu.add_radiobutton(
-            label=t("theme_light"),
-            variable=self.ui_theme,
-            value="light",
-            command=lambda: self.apply_theme("light"),
-        )
-        view_menu.add_radiobutton(
-            label=t("theme_dark"),
-            variable=self.ui_theme,
-            value="dark",
-            command=lambda: self.apply_theme("dark"),
-        )
-        view_menu.add_radiobutton(
-            label=t("theme_contrast"),
-            variable=self.ui_theme,
-            value="contrast",
-            command=lambda: self.apply_theme("contrast"),
-        )
         
         # Yardım Menüsü
-        admin_menu = Menu(menubar, tearoff=0)
-        menubar.add_cascade(label=t("menu_admin", "Admin"), menu=admin_menu)
-        admin_menu.add_command(
-            label=t("menu_password_management", "Parola Yonetimi"),
-            command=self.open_password_management,
-        )
-
         help_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label=t("menu_help"), menu=help_menu)
         help_menu.add_command(label=t("menu_user_guide"), command=self.show_user_guide)
@@ -378,97 +293,159 @@ class GasFlowCalculatorApp:
     def show_program_details(self):
         show_program_details(self.root)
 
-    def open_password_management(self):
-        if not prompt_for_admin_password(self.root):
-            self.log_message(
-                t("auth_admin_auth_failed", "Admin dogrulamasi basarisiz.", "Admin verification failed."),
-                level="WARNING",
-            )
-            return
-
-        if show_password_management_dialog(self.root):
-            load_auth_config()
-            self.log_message(
-                t("auth_passwords_updated", "Parolalar guncellendi.", "Passwords updated."),
-                level="INFO",
-            )
-
     def setup_styles(self):
-        self.style = ttk.Style()
-        self.style.theme_use("clam")
-        self.apply_theme(self.ui_theme.get(), persist=False)
+        style = ttk.Style()
+        style.theme_use('clam')
 
-    def apply_theme(self, theme_name, persist=True):
-        theme = THEME_PRESETS.get(theme_name, THEME_PRESETS["light"])
-        self.ui_theme.set(theme_name if theme_name in THEME_PRESETS else "light")
-        style = getattr(self, "style", ttk.Style())
+        # ── Renk Sistemi ─────────────────────────────────────
+        BG          = "#f0f3f8"        # Ana arka plan (soğuk gri)
+        CARD        = "#ffffff"        # Panel / kart arka planı
+        ACCENT      = "#1a237e"        # Koyu lacivert ana vurgu rengi
+        ACCENT2     = "#283593"        # Biraz açık vurgu
+        ACCENT_LIGHT= "#e8eaf6"        # Açık lacivert (hover / highlight)
+        TXT_DARK    = "#1c2032"        # Koyu metin
+        TXT_MID     = "#455a64"        # Orta metin
+        TXT_LIGHT   = "#78909c"        # Açık metin / hint
+        SUCCESS     = "#2e7d32"
+        WARN        = "#e65100"
+        ERR         = "#c62828"
+        # ─────────────────────────────────────────────────────
 
-        style.configure(".", background=theme["bg"], foreground=theme["txt_dark"], font=("Segoe UI", 10), focuscolor=theme["accent2"])
-        style.configure("TFrame", background=theme["bg"])
-        style.configure("Card.TFrame", background=theme["card"], relief="flat")
-        style.configure("TLabelframe", background=theme["card"], relief="flat", borderwidth=1, bordercolor=theme["border"])
-        style.configure("TLabelframe.Label", background=theme["card"], foreground=theme["accent"], font=("Segoe UI", 10, "bold"))
-        style.configure("Bold.TLabelframe.Label", background=theme["card"], foreground=theme["accent"], font=("Segoe UI", 10, "bold"))
-        style.configure("TNotebook", background=theme["bg"], tabmargins=[2, 5, 2, 0])
-        style.configure("TNotebook.Tab", background=theme["tab_idle"], foreground=theme["txt_mid"], padding=[10, 5], font=("Segoe UI", 9))
-        style.map("TNotebook.Tab", background=[("selected", theme["card"])], foreground=[("selected", theme["accent"])], font=[("selected", ("Segoe UI", 9, "bold"))])
-        style.configure("TButton", font=("Segoe UI", 10), padding=[8, 5], background=theme["button_bg"], foreground=theme["txt_dark"], relief="flat")
-        style.map("TButton", background=[("active", theme["accent_light"]), ("pressed", theme["tab_idle"])])
-        style.configure("SegBtn.TButton", font=("Segoe UI", 9), padding=[8, 4], background=theme["button_bg"], foreground=theme["txt_mid"], relief="flat")
-        style.map("SegBtn.TButton", background=[("active", theme["accent_light"])])
-        style.configure("SegBtnActive.TButton", font=("Segoe UI", 9, "bold"), padding=[8, 4], background=theme["accent"], foreground="#ffffff", relief="flat")
-        style.map("SegBtnActive.TButton", background=[("active", theme["accent2"])])
-        style.configure("TLabel", background=theme["card"], foreground=theme["txt_dark"], font=("Segoe UI", 10))
-        style.configure("Header.TLabel", font=("Segoe UI", 14, "bold"), foreground=theme["accent"], background=theme["card"])
-        style.configure("Sub.TLabel", font=("Segoe UI", 9), foreground=theme["txt_light"], background=theme["card"])
-        style.configure("Hint.TLabel", font=("Segoe UI", 9, "italic"), foreground=theme["txt_light"], background=theme["card"])
-        style.configure("Treeview", font=("Segoe UI", 9), rowheight=26, background=theme["card"], fieldbackground=theme["card"], foreground=theme["txt_dark"])
-        style.configure("Treeview.Heading", font=("Segoe UI", 9, "bold"), background=theme["accent_light"], foreground=theme["accent"])
-        style.map("Treeview", background=[("selected", theme["accent_light"])], foreground=[("selected", theme["accent"])])
-        style.configure("TEntry", padding=[4, 3], relief="flat", foreground=theme["txt_dark"])
-        style.map("TEntry", fieldbackground=[("focus", theme["entry_focus"])])
+        # Global
+        style.configure(".",
+                        background=BG,
+                        foreground=TXT_DARK,
+                        font=("Segoe UI", 10),
+                        focuscolor=ACCENT2)
+
+        # ── Frame'ler ──
+        style.configure("TFrame",  background=BG)
+        style.configure("Card.TFrame", background=CARD, relief="flat")
+
+        # ── LabelFrame (Panel Kartları) ──
+        style.configure("TLabelframe",
+                        background=CARD,
+                        relief="flat",
+                        borderwidth=1,
+                        bordercolor="#dee2e6")
+        style.configure("TLabelframe.Label",
+                        background=CARD,
+                        foreground=ACCENT,
+                        font=("Segoe UI", 10, "bold"))
+        style.configure("Bold.TLabelframe.Label",
+                        background=CARD,
+                        foreground=ACCENT,
+                        font=("Segoe UI", 10, "bold"))
+
+        # ── Notebook (Sekmeler) ──
+        style.configure("TNotebook",
+                        background=BG,
+                        tabmargins=[2, 5, 2, 0])
+        style.configure("TNotebook.Tab",
+                        background="#d1d8e6",
+                        foreground=TXT_MID,
+                        padding=[10, 5],
+                        font=("Segoe UI", 9))
+        style.map("TNotebook.Tab",
+                  background=[("selected", CARD)],
+                  foreground=[("selected", ACCENT)],
+                  font=[("selected", ("Segoe UI", 9, "bold"))])
+
+        # ── Butonlar ──
+        style.configure("TButton",
+                        font=("Segoe UI", 10),
+                        padding=[8, 5],
+                        background="#dde3ef",
+                        foreground=TXT_DARK,
+                        relief="flat")
+        style.map("TButton",
+                  background=[("active", ACCENT_LIGHT), ("pressed", "#c5cae9")])
+
+        # Seçim butonları (Hesaplama Hedefi)
+        style.configure("SegBtn.TButton",
+                        font=("Segoe UI", 9),
+                        padding=[8, 4],
+                        background="#dde3ef",
+                        foreground=TXT_MID,
+                        relief="flat")
+        style.map("SegBtn.TButton",
+                  background=[("active", ACCENT_LIGHT)])
+
+        style.configure("SegBtnActive.TButton",
+                        font=("Segoe UI", 9, "bold"),
+                        padding=[8, 4],
+                        background=ACCENT,
+                        foreground="#ffffff",
+                        relief="flat")
+        style.map("SegBtnActive.TButton",
+                  background=[("active", ACCENT2)])
+
+        # ── Label'lar ──
+        style.configure("TLabel",    background=CARD, foreground=TXT_DARK, font=("Segoe UI", 10))
+        style.configure("Header.TLabel",
+                        font=("Segoe UI", 14, "bold"),
+                        foreground=ACCENT,
+                        background=CARD)
+        style.configure("Sub.TLabel",
+                        font=("Segoe UI", 9),
+                        foreground=TXT_LIGHT,
+                        background=CARD)
+        style.configure("Hint.TLabel",
+                        font=("Segoe UI", 9, "italic"),
+                        foreground=TXT_LIGHT,
+                        background=CARD)
+
+        # ── Treeview ──
+        style.configure("Treeview",
+                        font=("Segoe UI", 9),
+                        rowheight=26,
+                        background=CARD,
+                        fieldbackground=CARD,
+                        foreground=TXT_DARK)
+        style.configure("Treeview.Heading",
+                        font=("Segoe UI", 9, "bold"),
+                        background=ACCENT_LIGHT,
+                        foreground=ACCENT)
+        style.map("Treeview",
+                  background=[("selected", ACCENT_LIGHT)],
+                  foreground=[("selected", ACCENT)])
+
+        # ── Entry (Giriş Kutusu) ──
+        style.configure("TEntry",
+                        padding=[4, 3],
+                        relief="flat",
+                        foreground=TXT_DARK)
+        style.map("TEntry",
+                  fieldbackground=[("focus", "#eef2ff")])
+
+        # ── Combobox ──
         style.configure("TCombobox", padding=[4, 3], relief="flat")
-        style.configure("TScrollbar", background=theme["scrollbar"], troughcolor=theme["card"], relief="flat")
-        style.map("TScrollbar", background=[("active", theme["accent_light"])])
 
-        self.root.configure(bg=theme["bg"])
-        self._colors = theme
-        self._refresh_theme_surfaces()
+        # ── Scrollbar ──
+        style.configure("TScrollbar", background="#ced4da", troughcolor=CARD, relief="flat")
+        style.map("TScrollbar", background=[("active", ACCENT_LIGHT)])
 
-        if persist:
-            cfg = load_app_config()
-            cfg["ui_theme"] = self.ui_theme.get()
-            save_app_config(cfg)
+        # Root arka planı
+        self.root.configure(bg=BG)
 
-    def _refresh_theme_surfaces(self):
-        if not hasattr(self, "_colors"):
-            return
-
-        card = self._colors["card"]
-        txt_mid = self._colors["txt_mid"]
-
-        if hasattr(self, "gas_list_canvas"):
-            self.gas_list_canvas.configure(bg=self._colors["gas_canvas"])
-        if hasattr(self, "gas_total_label"):
-            self.gas_total_label.configure(bg=card, fg=txt_mid)
-        if hasattr(self, "gas_status_label"):
-            self.gas_status_label.configure(bg=card, fg=txt_mid)
-        if getattr(self, "report_text", None) is not None:
-            self.report_text.configure(background=card, foreground=self._colors["txt_dark"], insertbackground=self._colors["accent"])
-        if getattr(self, "schematic_canvas", None) is not None:
-            self.schematic_canvas.configure(bg=card)
+        # Paylaşımlı renk sabitlerini sakla (paneller kullanabilsin)
+        self._colors = {
+            'bg': BG, 'card': CARD, 'accent': ACCENT, 'accent2': ACCENT2,
+            'accent_light': ACCENT_LIGHT, 'txt_dark': TXT_DARK,
+            'txt_mid': TXT_MID, 'txt_light': TXT_LIGHT,
+            'success': SUCCESS, 'warn': WARN, 'err': ERR
+        }
 
     def validate_float(self, event):
         """Eski stil doğrulama - geriye uyumluluk için korundu."""
         widget = event.widget
-        default_bg = getattr(self, "_colors", THEME_PRESETS["light"])["card"]
         try:
             # Virgül desteği ekle
             value_str = widget.get()
             normalized = ValidationHelper.normalize_number(value_str)
             val = float(normalized)
             if val < 0: raise ValueError
-            widget.config(bg=default_bg)
+            widget.config(bg="white")
         except ValueError:
             widget.config(bg="#ffe6e6")  # Hata durumunda hafif kırmızı
 
@@ -500,18 +477,18 @@ class GasFlowCalculatorApp:
         widget = event.widget
         if isinstance(widget, ValidatedEntry):
             return  # ValidatedEntry kendi doğrulamasını yapar
-        default_bg = getattr(self, "_colors", THEME_PRESETS["light"])["card"]
+        
         try:
             value_str = widget.get()
             if not value_str.strip():
-                widget.config(bg=default_bg)
+                widget.config(bg="white")
                 return
             normalized = ValidationHelper.normalize_number(value_str)
             val = float(normalized)
             if val < 0:
                 widget.config(bg="#ffe6e6")
             else:
-                widget.config(bg=default_bg)
+                widget.config(bg="white")
         except ValueError:
             widget.config(bg="#ffe6e6")
 
@@ -610,8 +587,7 @@ class GasFlowCalculatorApp:
     def _setup_schematic_bindings(self):
         """Şema otomatik güncelleme için binding'leri kur."""
         # Hesaplama hedefi değiştiğinde şemayı güncelle
-        self._last_calc_target = self.calc_target.get()
-        self.calc_target.trace_add("write", self._on_calc_target_changed)
+        self.calc_target.trace_add("write", lambda *args: self._on_target_or_input_change())
         
         # Akış tipi değiştiğinde şemayı güncelle
         self.flow_type.bind("<<ComboboxSelected>>", self._on_target_or_input_change)
@@ -628,23 +604,6 @@ class GasFlowCalculatorApp:
         
         # Debounce için timer ID
         self._schematic_update_timer = None
-
-    def _sync_calc_target_buttons(self):
-        for target, btn in getattr(self, "_seg_buttons", {}).items():
-            btn.configure(
-                style="SegBtnActive.TButton" if target == self.calc_target.get()
-                else "SegBtn.TButton"
-            )
-
-    def _on_calc_target_changed(self, *args):
-        current_target = self.calc_target.get()
-        if current_target != getattr(self, "_last_calc_target", None):
-            self.schematic_state = "pending"
-            self.last_result = None
-            self._last_calc_target = current_target
-        self._sync_calc_target_buttons()
-        self.update_ui_visibility()
-        self.refresh_schematic()
     
     def _on_target_or_input_change(self, event=None):
         """Hedef veya önemli girdi değiştiğinde."""
@@ -721,7 +680,7 @@ class GasFlowCalculatorApp:
 
         # Sol: Uygulama adı
         tk.Label(footer,
-                 text=f"  Gas Flow Calc V{APP_VERSION}  |  © 2025 Mühendislik Araçları",
+                 text=f"  Gas Flow Calc V{APP_VERSION}  |  © {datetime.now().year} Mühendislik Araçları",
                  font=("Segoe UI", 8), bg="#1a237e", fg="#c5cae9").pack(side="left")
 
         # Sağ: Durum etiketleri
@@ -759,8 +718,8 @@ class GasFlowCalculatorApp:
 
             if calc_time_ms is not None:
                 self.footer_time.config(text=f"⏱ {calc_time_ms} ms")
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_message(f"Footer guncelleme hatasi: {e}", level="ERROR")
 
     # --- İŞLEVSELLİK ---
     
@@ -841,8 +800,8 @@ class GasFlowCalculatorApp:
                     self.gas_total_bar.config(bg="#c62828")
                 else:
                     self.gas_total_bar.config(bg="#43a047")
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_message(f"Gaz bar guncelleme hatasi: {e}", level="ERROR")
 
         # Durum kontrolü
         tolerance = 0.01  # %0.01 tolerans
@@ -991,63 +950,6 @@ class GasFlowCalculatorApp:
             self.smys_var.set(smys)
             self.ent_smys.config(state="disabled")
 
-    def _set_widget_state(self, widget, enabled, enabled_state=None):
-        desired_state = "disabled"
-        if enabled:
-            if enabled_state:
-                desired_state = enabled_state
-            elif isinstance(widget, ttk.Combobox):
-                desired_state = "readonly"
-            else:
-                desired_state = "normal"
-        widget.config(state=desired_state)
-
-    def _sync_pipe_geometry_states(self, geometry_enabled):
-        self._set_widget_state(self.nps_combo, geometry_enabled, enabled_state="readonly")
-        self._set_widget_state(self.schedule_combo, geometry_enabled, enabled_state="readonly")
-
-        if not geometry_enabled:
-            self.ent_diam.config(state="disabled")
-            self.ent_thick.config(state="disabled")
-            return
-
-        if self.nps_combo.get():
-            self.ent_diam.config(state="readonly")
-            self.ent_thick.config(state="readonly")
-        else:
-            self.ent_diam.config(state="normal")
-            self.ent_thick.config(state="normal")
-
-    def _apply_target_input_states(self):
-        target = self.calc_target.get()
-        is_pressure_drop = target == t("target_pressure_drop")
-        is_max_length = target == t("target_max_length")
-        is_min_diameter = target == t("target_min_diameter")
-        flow_mode = normalize_flow_mode(self.flow_type.get())
-        needs_length = is_pressure_drop or (
-            is_min_diameter and flow_mode != FLOW_MODE_INCOMPRESSIBLE
-        )
-
-        self._set_widget_state(self.ent_len, needs_length)
-        self._set_widget_state(self.ent_target_p, is_max_length)
-        self._set_widget_state(self.target_p_unit, is_max_length, enabled_state="readonly")
-        self._set_widget_state(self.ent_max_vel, is_min_diameter)
-
-        self._sync_pipe_geometry_states(is_pressure_drop or is_max_length)
-
-        self._set_widget_state(self.ent_p_design, is_min_diameter)
-        self._set_widget_state(self.p_design_unit, is_min_diameter, enabled_state="readonly")
-        self._set_widget_state(self.ent_factor_f, is_min_diameter)
-        self._set_widget_state(self.ent_factor_e, is_min_diameter)
-        self._set_widget_state(self.ent_factor_t, is_min_diameter)
-        self._set_widget_state(self.chk_opt_weight, is_min_diameter)
-        self._set_widget_state(self.chk_fast_calc, is_min_diameter)
-
-        if is_min_diameter:
-            self._on_material_changed()
-        else:
-            self.ent_smys.config(state="disabled")
-
     def update_ui_visibility(self, event=None):
         target = self.calc_target.get()
         
@@ -1057,24 +959,24 @@ class GasFlowCalculatorApp:
         self.lbl_max_vel.grid_remove(); self.ent_max_vel.grid_remove()
         
         # Tasarım Kriterleri: sadece Min.Çap modunda göster
-        if target == t("target_min_diameter"):
+        if target == TARGET_MIN_DIAMETER:
             self.design_frame.pack(fill="x", pady=5)
         else:
             self.design_frame.pack_forget()
         
-        if target == t("target_pressure_drop"):
+        if target == TARGET_PRESSURE_DROP:
             self.lbl_len.grid(row=0, column=4, padx=(15, 5)); self.ent_len.grid(row=0, column=5)
             self.pipe_panel.pack(fill="x", pady=5) # Göster
-        elif target == t("target_max_length"):
+        elif target == TARGET_MAX_LENGTH:
             self.lbl_target_p.grid(row=0, column=4, padx=(15, 5)); self.ent_target_p.grid(row=0, column=5)
             self.target_p_unit.grid(row=0, column=6, padx=5)
             self.pipe_panel.pack(fill="x", pady=5) # Göster
-        elif target == t("target_min_diameter"):
+        elif target == TARGET_MIN_DIAMETER:
             self.lbl_max_vel.grid(row=0, column=4, padx=(15, 5)); self.ent_max_vel.grid(row=0, column=5)
-            # Uzunluk minimum çap hesabında her zaman gereklidir
-            self.lbl_len.grid(row=0, column=6, padx=(15, 5)); self.ent_len.grid(row=0, column=7)
-
-        self._apply_target_input_states()
+            
+            # Sıkıştırılabilir akış ise Uzunluk da gerekli
+            if normalize_flow_mode(self.flow_type.get()) == FLOW_MODE_COMPRESSIBLE:
+                self.lbl_len.grid(row=0, column=6, padx=(15, 5)); self.ent_len.grid(row=0, column=7)
 
     def save_report(self):
         path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Text Files", "*.txt")])
@@ -1119,10 +1021,8 @@ class GasFlowCalculatorApp:
             "t_val": self.t_var.get(), "t_unit": self.t_unit.get(),
             "flow_val": self.flow_var.get(), "flow_unit": self.flow_unit.get(),
             "calc_target": self.calc_target.get(),
-            "calc_target_mode": normalize_calc_target(self.calc_target.get()),
             "thermo_model": self.thermo_model.get(),
             "flow_type": self.flow_type.get(),
-            "flow_mode": normalize_flow_mode(self.flow_type.get()),
             "material": self.material_combo.get(),
             "opt_weight": self.opt_weight_var.get(),
             "fast_calc": self.fast_calc_var.get(),
@@ -1176,24 +1076,9 @@ class GasFlowCalculatorApp:
         self.t_unit.set(data.get("t_unit", "°C"))
         self.flow_var.set(data.get("flow_val", 0))
         self.flow_unit.set(data.get("flow_unit", "Sm³/h"))
-        saved_target_mode = data.get("calc_target_mode", data.get("calc_target"))
-        self.calc_target.set(
-            get_calc_target_label(
-                saved_target_mode,
-                pressure_drop_label=t("target_pressure_drop"),
-                max_length_label=t("target_max_length"),
-                min_diameter_label=t("target_min_diameter"),
-            )
-        )
+        self.calc_target.set(data.get("calc_target", TARGET_PRESSURE_DROP))
         self.thermo_model.set(data.get("thermo_model", "CoolProp (High Accuracy EOS)"))
-        saved_flow_mode = data.get("flow_mode", data.get("flow_type"))
-        self.flow_type.set(
-            get_flow_mode_label(
-                saved_flow_mode,
-                compressible_label=t("flow_compressible"),
-                incompressible_label=t("flow_incompressible"),
-            )
-        )
+        self.flow_type.set(data.get("flow_type", "Sıkıştırılamaz"))
         self.material_combo.set(data.get("material", "API 5L Grade B"))
         self._on_material_changed()  # SMYS güncelle
         if "smys_val" in data:
@@ -1247,21 +1132,21 @@ class GasFlowCalculatorApp:
         target = self.calc_target.get()
         
         # 3. Hedefe Özel Kontroller
-        if target == t("target_pressure_drop"):
+        if target == TARGET_PRESSURE_DROP:
             if self.get_float_value(self.len_var, 0) <= 0: errors.append("Boru uzunluğu pozitif olmalıdır.")
             if self.get_float_value(self.diam_var, 0) <= 0: errors.append("Boru çapı pozitif olmalıdır.")
             diam = self.get_float_value(self.diam_var, 0)
             thick = self.get_float_value(self.thick_var, 0)
             if thick >= diam / 2: errors.append("Et kalınlığı yarıçaptan küçük olmalıdır.")
             
-        elif target == t("target_max_length"):
+        elif target == TARGET_MAX_LENGTH:
             if self.get_float_value(self.target_p_var, 0) <= 0: errors.append("Hedef çıkış basıncı pozitif olmalıdır.")
             if self.get_float_value(self.diam_var, 0) <= 0: errors.append("Boru çapı pozitif olmalıdır.")
             
-        elif target == t("target_min_diameter"):
+        elif target == TARGET_MIN_DIAMETER:
             if self.get_float_value(self.max_vel_var, 0) <= 0: errors.append("Maksimum hız limiti pozitif olmalıdır.")
             if self.get_float_value(self.p_design_var, 0) <= 0: errors.append("Tasarım basıncı pozitif olmalıdır.")
-            if normalize_flow_mode(self.flow_type.get()) != FLOW_MODE_INCOMPRESSIBLE and self.get_float_value(self.len_var, 0) <= 0:
+            if self.flow_type.get() == t("flow_compressible") and self.get_float_value(self.len_var, 0) <= 0:
                 errors.append("Sıkıştırılabilir akış çap hesabı için boru uzunluğu gereklidir.")
 
         if errors:
@@ -1271,8 +1156,6 @@ class GasFlowCalculatorApp:
 
     # --- HESAPLAMA BAŞLATMA ---
     def start_calculation(self):
-        ui_state = self.get_ui_state()
-        
         # 1. Gaz Bileşimi Kontrolü
         is_exact, total, mole_fractions, confirmed, error_msg = self.check_gas_composition()
         
@@ -1292,10 +1175,16 @@ class GasFlowCalculatorApp:
             }
             self.log_message(f"⚠️ Gaz bileşimi normalize edildi: %{total:.2f} → %100", level="WARNING")
 
-        # 2. Verileri Topla
-        inputs, errors = self.controller.prepare_inputs(ui_state, mole_fractions)
+        # 2. Verileri Topla — Controller üzerinden
+        ui_state = self.get_ui_state()
+        inputs, errors = self.controller.prepare_inputs(ui_state, mole_fractions_override=mole_fractions)
+        
         if errors:
-            messagebox.showwarning("Giriş Hatası", "\\n".join(errors))
+            messagebox.showerror("Girdi Hatası", "\n".join(errors))
+            return
+            
+        if inputs is None:
+            messagebox.showerror("Girdi Hatası", "Girdi verileri hazırlanamadı.")
             return
             
         inputs["normalization_info"] = normalization_info
@@ -1394,7 +1283,7 @@ class GasFlowCalculatorApp:
         else: P_in = p_in_val * 6894.76
 
         t_val = self.get_float_value(self.t_var, 25)
-        t_unit = str(self.t_unit.get()).strip()
+        t_unit = str(self.t_unit.get()).replace("Â", "").strip()
         if t_unit == "°C": T = t_val + 273.15
         elif t_unit == "°F": T = (t_val - 32) * 5/9 + 273.15
         else: T = t_val
@@ -1406,13 +1295,13 @@ class GasFlowCalculatorApp:
         t_wall = self.get_float_value(self.thick_var, 0)
         
         # Eğer hedef Minimum Çap DEĞİLSE, Dış Çap ve Et Kalınlığı zorunludur.
-        if target != t("target_min_diameter"):
+        if target != TARGET_MIN_DIAMETER:
             if D_outer <= 0: raise ValueError(t("validation_positive_diameter"))
             if t_wall <= 0: raise ValueError(t("validation_positive_thickness"))
             
         D_inner = D_outer - 2 * t_wall
         # Minimum çap hesabında başlangıç için D_inner 0 olabilir, hata vermesin.
-        if target != t("target_min_diameter") and D_inner <= 0: 
+        if target != TARGET_MIN_DIAMETER and D_inner <= 0: 
             raise ValueError(t("validation_invalid_geometry"))
 
         # Fittings K
@@ -1439,9 +1328,8 @@ class GasFlowCalculatorApp:
             "roughness": PIPE_ROUGHNESS.get(self.material_combo.get(), 4.57e-5),
             "total_k": total_k,
             "flow_property": self.flow_type.get(),
-            "flow_mode": normalize_flow_mode(self.flow_type.get()),
             "target": self.calc_target.get(),
-            "P_out_target": self.convert_pressure_to_pa(self.get_float_value(self.target_p_var, 0), self.target_p_unit.get(), output_type="absolute") if self.calc_target.get() == t("target_max_length") else 0,
+            "P_out_target": self.convert_pressure_to_pa(self.get_float_value(self.target_p_var, 0), self.target_p_unit.get(), output_type="absolute") if self.calc_target.get() == TARGET_MAX_LENGTH else 0,
             
             # Min Çap İçin Ekler
             "max_velocity": max_vel,
@@ -1470,20 +1358,21 @@ class GasFlowCalculatorApp:
 
     def run_calculation_thread(self, inputs):
         try:
-            # Her yeni hesaplama için termodinamik cache'i temizle
-            # (Gaz bileşimi veya koşullar değişmiş olabilir)
-            self.calculator.clear_thermo_cache()
+            # Kullanicidan gelen mole_fractions degisti mi kontrol et
+            self.calculator.clear_thermo_cache(
+                mole_fractions=inputs.get("mole_fractions")
+            )
             
             target = inputs['target']
             result = None
             
-            if target == t("target_pressure_drop"):
+            if target == TARGET_PRESSURE_DROP:
                 result = self.calculator.calculate_pressure_drop(inputs)
                 report = format_pressure_drop_report(inputs, result)
-            elif target == t("target_max_length"):
+            elif target == TARGET_MAX_LENGTH:
                 result = self.calculator.calculate_max_length(inputs)
                 report = format_max_length_report(inputs, result)
-            elif target == t("target_min_diameter"):
+            elif target == TARGET_MIN_DIAMETER:
                 result = self.calculator.calculate_min_diameter(inputs)
                 report = format_min_diameter_report(inputs, result)
             else:
@@ -1540,41 +1429,8 @@ class GasFlowCalculatorApp:
     def _update_warning_banner(self, result):
         """Hesaplama sonucuna göre uyarı afişini yönetir."""
         self.warning_card.pack_forget()
-        phase_info = result.get("phase_info") or {}
-        phase = phase_info.get("phase")
-        warning_level = phase_info.get("warning_level", "ok")
-        vapor_quality = phase_info.get("vapor_quality")
-        formula_label = phase_info.get("formula_label_tr", "")
         status = result.get("choked_status", "N/A")
-
-        if warning_level in {"warning", "critical"} and phase in {"two_phase", "liquid", "unknown"}:
-            if phase == "two_phase":
-                if vapor_quality is not None and vapor_quality > 0.85:
-                    bg = "#fff3cd"
-                    fg = "#856404"
-                else:
-                    bg = "#ffe5d0"
-                    fg = "#9a3412"
-                text = f"{phase_info.get('phase_label_tr', 'Iki Fazli')} tespit edildi"
-                if vapor_quality is not None:
-                    text += f" | Q = {vapor_quality:.3f}"
-            elif phase == "liquid":
-                bg = "#dbeafe"
-                fg = "#1d4ed8"
-                text = "Sivi faz tespit edildi"
-            else:
-                bg = "#f3f4f6"
-                fg = "#374151"
-                text = phase_info.get("warning_msg_tr", "Faz belirlenemedi")
-
-            if formula_label:
-                text += f" | {formula_label}"
-
-            self.warning_label.config(text=text, bg=bg, fg=fg)
-            self.warning_card.config(bg=bg)
-            self.warning_card.pack(fill="x", pady=(0, 5), after=self.summary_card)
-            return
-
+        
         if status != "OK" and status != "N/A":
             if "CHOKED" in status:
                 self.warning_label.config(text=t("warning_choked"), bg="#f8d7da", fg="#721c24")
@@ -1637,19 +1493,59 @@ class GasFlowCalculatorApp:
             
         if not result: return
         
-        ui_state = self.get_ui_state()
-        rows = self.controller.get_results_table_data(result, self.calc_target.get(), ui_state)
+        # Yardımcı fonksiyon
+        def add_row(param, value, unit="", tag=""):
+            self.res_tree.insert("", "end", values=(param, value, unit), tags=(tag,))
+
+        # Hedefe göre içerik
+        target = self.calc_target.get()
         
-        for row in rows:
-            if len(row) == 4:
-                param, value, unit, tag = row
-                self.res_tree.insert("", "end", values=(param, value, unit), tags=(tag,))
+        if target == TARGET_PRESSURE_DROP:
+            add_row("Giriş Basıncı", f"{self.p_in_var.get():.2f}", self.p_unit.get())
+            add_row("Çıkış Basıncı", f"{result['P_out']/1e5:.4f}", "bara")
+            add_row("Toplam Basınç Kaybı", f"{result['delta_p_total']/1e5:.4f}", "bar")
+            add_row("Giriş Hızı", f"{result['velocity_in']:.2f}", "m/s")
+            add_row("Çıkış Hızı", f"{result['velocity_out']:.2f}", "m/s")
+            
+        elif target == TARGET_MAX_LENGTH:
+            if "error" in result:
+                 add_row("Durum", "HATA", "", "error")
+                 add_row("Mesaj", result['error'], "")
             else:
-                param, value, unit = row
-                self.res_tree.insert("", "end", values=(param, value, unit))
+                add_row("Maksimum Uzunluk", f"{result['L_max']:.2f}", "m")
+                add_row("Reynolds", f"{result['Re']:.0f}", "")
+                
+        elif target == TARGET_MIN_DIAMETER:
+            if result['selected_pipe']:
+                p = result['selected_pipe']
+                add_row("Seçilen Boru", f"{p['nominal']}\"", f"Sch {p['schedule']}", "success")
+                add_row("İç Çap", f"{p['D_inner_mm']:.2f}", "mm")
+                if 'weight_per_m' in p:
+                    add_row(t("unit_weight"), f"{p['weight_per_m']:.2f}", "kg/m")
+                add_row("Çıkış Hızı", f"{result['velocity_out']:.2f}", "m/s")
+                add_row("Limit Hız", f"{result['max_vel']:.2f}", "m/s")
+                
+                status_tag = "success" if "Uygun" in result['velocity_status'] else "warning"
+                add_row("Durum", result['velocity_status'], "", status_tag)
+                
+                # Alternatif Senaryolar Gridi
+                if 'alternative_options' in result and result['alternative_options']:
+                    add_row("", "", "")  # Boşluk
+                    add_row("--- Alternatif Seçenekler ---", "", "", "warning")
+                    for alt in result['alternative_options']:
+                        p_alt = alt['pipe']
+                        add_row(f"[★] {alt['note']}", f"{p_alt['nominal']}\" Sch {p_alt['schedule']}", "")
+                        if 'weight_per_m' in p_alt:
+                            add_row(f"   ↳ {t('unit_weight')}", f"{p_alt['weight_per_m']:.2f}", "kg/m")
+            else:
+                add_row("Durum", "Uygun Boru Yok", "", "error")
+
+        # Ortak Veriler (Debi vb.)
+        if 'm_dot' in result:
+             add_row("Kütlesel Debi", f"{result['m_dot']:.4f}", "kg/s")
 
         # Summary Card güncelle
-        self._update_summary_card(result, self.calc_target.get())
+        self._update_summary_card(result, target)
 
     def _update_summary_card(self, result, target):
         """Hesaplama sonrası özet kartını güncelle."""
@@ -1657,7 +1553,7 @@ class GasFlowCalculatorApp:
         summary_text = ""
         
         try:
-            if target == t("target_pressure_drop"):
+            if target == TARGET_PRESSURE_DROP:
                 p_out_bar = result['P_out'] / 1e5
                 dp_bar = result['delta_p_total'] / 1e5
                 v_out = result['velocity_out']
@@ -1666,14 +1562,14 @@ class GasFlowCalculatorApp:
                     bg_color = "#fff3e0"; fg_color = "#e65100"  # Turuncu
                     summary_text += "  ⚠"
                     
-            elif target == t("target_max_length"):
+            elif target == TARGET_MAX_LENGTH:
                 if "error" in result:
                     bg_color = "#ffebee"; fg_color = "#c62828"
                     summary_text = f"❌ {result['error']}"
                 else:
                     summary_text = f"L_max = {result['L_max']:.1f} m  │  Re = {result['Re']:.0f}"
                     
-            elif target == t("target_min_diameter"):
+            elif target == TARGET_MIN_DIAMETER:
                 if result.get('selected_pipe'):
                     p = result['selected_pipe']
                     summary_text = f"{p['nominal']}\" Sch {p['schedule']}  │  v = {result['velocity_out']:.1f} m/s"
@@ -1689,94 +1585,6 @@ class GasFlowCalculatorApp:
         self.summary_card.config(bg=bg_color)
         self.summary_label.config(text=summary_text, bg=bg_color, fg=fg_color)
         self.summary_card.pack(fill="x", pady=(0, 5))
-
-    def format_pressure_drop_report(self, inputs, result):
-        # Basit rapor formatı
-        res = f"=== HESAPLAMA SONUCU ===\n"
-        res += f"Hedef: Çıkış Basıncı\n"
-        res += f"Giriş Basıncı: {inputs['P_in']/1e5:.4f} bara\n"
-        res += f"Çıkış Basıncı: {result['P_out']/1e5:.4f} bara\n"
-        res += f"Toplam Basınç Kaybı: {result['delta_p_total']/1e5:.4f} bar\n"
-        res += f"  - Boru Kaybı: {result['delta_p_pipe']/1e5:.4f} bar\n"
-        res += f"  - Fitting Kaybı: {result['delta_p_fittings']/1e5:.4f} bar\n\n"
-        res += f"Akış Hızı (Giriş): {result['velocity_in']:.2f} m/s\n"
-        res += f"Akış Hızı (Çıkış): {result['velocity_out']:.2f} m/s\n"
-        res += f"Reynolds: {result['Re']:.0f}\n"
-        res += f"Sürtünme Faktörü (f): {result['f']:.5f}\n"
-        return res
-
-    def format_max_length_report(self, inputs, result):
-        res = f"=== HESAPLAMA SONUCU ===\n"
-        res += f"Hedef: Maksimum Uzunluk\n"
-        if "error" in result:
-            res += f"HATA: {result['error']}\n"
-        else:
-            res += f"Maksimum Uzunluk: {result['L_max']:.2f} m\n"
-            res += f"Reynolds: {result['Re']:.0f}\n"
-        return res
-
-    def format_min_diameter_report(self, inputs, result):
-        res = f"=== HESAPLAMA SONUCU ===\n"
-        res += f"Hedef: Minimum Çap Seçimi\n"
-        res += f"Maksimum Hız Limiti: {result['max_vel']:.2f} m/s\n"
-        res += f"Gerekli Min. İç Çap (Tahmini): {result['D_min_inner_mm']:.2f} mm\n"
-        res += f"Gerçek Akış Hızı (Giriş): {result['flow_rate_actual']:.4f} m³/s\n\n"
-        
-        if result['selected_pipe']:
-            pipe = result['selected_pipe']
-            res += f"=== SEÇİLEN BORU (ASME B36.10M) ===\n"
-            res += f"Nominal Çap: {pipe['nominal']}\"\n"
-            res += f"Schedule: {pipe['schedule']}\n"
-            res += f"Dış Çap: {pipe['OD_mm']:.2f} mm\n"
-            res += f"Et Kalınlığı: {pipe['t_mm']:.2f} mm\n"
-            res += f"İç Çap: {pipe['D_inner_mm']:.2f} mm\n"
-            res += f"Gerekli Et Kalınlığı (Mukavemet): {pipe['t_required_mm']:.2f} mm\n\n"
-            
-            res += f"=== PERFORMANS (SEÇİLEN) ===\n"
-            res += f"Giriş Hızı: {result['velocity_in']:.2f} m/s\n"
-            res += f"Çıkış Hızı: {result['velocity_out']:.2f} m/s\n"
-            res += f"Çıkış Basıncı: {result['P_out']/1e5:.4f} bara\n"
-            res += f"Durum: {result['velocity_status']}\n"
-            
-            # Alternatifler
-            if 'alternatives' in result and result['alternatives']:
-                res += f"\n=== ALTERNATİF SENARYOLAR ===\n"
-                
-                # Thinner
-                if 'thinner' in result['alternatives']:
-                    alt = result['alternatives']['thinner']
-                    p = alt['pipe']
-                    r = alt['result']
-                    res += f"\n[1] {alt['note']}:\n"
-                    res += f"   Boru: {p['nominal']}\" {p['schedule']} (ID: {p['D_inner_mm']:.2f} mm)\n"
-                    res += f"   Çıkış Hızı: {r['velocity_out']:.2f} m/s\n"
-                    res += f"   Çıkış Basıncı: {r['P_out']/1e5:.4f} bara\n"
-                
-                # Thicker
-                if 'thicker' in result['alternatives']:
-                    alt = result['alternatives']['thicker']
-                    p = alt['pipe']
-                    r = alt['result']
-                    res += f"\n[2] {alt['note']}:\n"
-                    res += f"   Boru: {p['nominal']}\" {p['schedule']} (ID: {p['D_inner_mm']:.2f} mm)\n"
-                    res += f"   Çıkış Hızı: {r['velocity_out']:.2f} m/s\n"
-                    res += f"   Çıkış Basıncı: {r['P_out']/1e5:.4f} bara\n"
-
-                # Lowest Weight (Eğer optimize_weight seçilmemiş ama daha hafifi varsa)
-                if 'lowest_weight' in result['alternatives']:
-                    alt = result['alternatives']['lowest_weight']
-                    p = alt['pipe']
-                    r = alt['result']
-                    res += f"\n[★] {alt['note']}:\n"
-                    res += f"   Boru: {p['nominal']}\" {p['schedule']} (ID: {p['D_inner_mm']:.2f} mm)\n"
-                    res += f"   Birim Ağırlık: {p.get('weight_per_m', 0):.2f} kg/m\n"
-                    res += f"   Çıkış Hızı: {r['velocity_out']:.2f} m/s\n"
-                    res += f"   Çıkış Basıncı: {r['P_out']/1e5:.4f} bara\n"
-
-        else:
-            res += "UYARI: Kriterlere uygun standart boru bulunamadı!\n"
-            
-        return res
 
     def draw_schematic(self, event=None):
         """Hesaplama hedefine ve duruma göre interaktif sistem şeması çizer."""
@@ -1837,31 +1645,13 @@ class GasFlowCalculatorApp:
             return False
 
         cfg = load_app_config()
-        cfg["github_token"] = token.strip()
+        cfg["github_token"] = _obfuscate_token(token.strip())
         save_app_config(cfg)
         self.updater = Updater(self.log_message)
         return bool(self.updater.github_token)
 
     # --- Güncelleme İşlevleri ---
-    def _prompt_for_update(self, info):
-        if not info or not info.get("has_update"):
-            return
-
-        body = info.get("body", "")
-        preview = (body[:500] + ("..." if len(body) > 500 else "")) if body else "N/A"
-        msg = (
-            f"{t('update_new_version')}: {info['latest_version']}\n\n"
-            f"{t('update_changes')}: {preview}\n\n"
-            f"{t('update_download_ask')}"
-        )
-        if messagebox.askyesno(t("update_available"), msg):
-            self.download_latest_release()
-
     def silent_update_check(self):
-        if self._startup_update_check_done:
-            return
-        self._startup_update_check_done = True
-
         try:
             if getattr(self.updater, "private_repo", False) and not self.updater.github_token:
                 self.log_message(t("update_private_repo_skip"), level="INFO")
@@ -1869,7 +1659,6 @@ class GasFlowCalculatorApp:
             update_info = self.updater.check_for_update(current_version=APP_VERSION)
             if update_info and update_info.get("has_update"):
                 self.log_message(f"{t('update_new_version')}: {update_info['latest_version']}")
-                self.root.after(0, lambda info=update_info: self._prompt_for_update(info))
         except Exception as e:
             self.log_message(f"Silent update check failed: {e}", level="WARNING")
 
@@ -1883,7 +1672,15 @@ class GasFlowCalculatorApp:
                 messagebox.showinfo(t("dialog_update"), t("update_config_error"))
                 return
             if info["has_update"]:
-                self._prompt_for_update(info)
+                body = info.get('body', '')
+                preview = (body[:500] + ('...' if len(body) > 500 else '')) if body else 'N/A'
+                msg = (
+                    f"{t('update_new_version')}: {info['latest_version']}\n\n"
+                    f"{t('update_changes')}: {preview}\n\n"
+                    f"{t('update_download_ask')}"
+                )
+                if messagebox.askyesno(t("update_available"), msg):
+                    self.download_latest_release()
             else:
                 messagebox.showinfo(t("dialog_update"), t("update_up_to_date"))
         except Exception as e:
@@ -1953,11 +1750,5 @@ class GasFlowCalculatorApp:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    root.withdraw()
-    load_auth_config()
-    if not prompt_for_program_access(root):
-        root.destroy()
-        raise SystemExit(0)
     app = GasFlowCalculatorApp(root)
-    root.deiconify()
     root.mainloop()

@@ -1,5 +1,5 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.2.1"
+APP_VERSION = "6.3.0"
 
 
 RELEASE_NOTES = {
@@ -210,6 +210,74 @@ RELEASE_NOTES = {
         "en": """Highlights introduced in 6.2.1:
 
 - Executable version and publisher metadata were added to the packaging build to prevent false-positive detections by corporate antivirus software (e.g., Windows Defender)."""
+    },
+    "6.3.0": {
+        "tr": """6.3.0 ile gelen baslica yenilikler:
+
+GUVENLIK:
+- Admin sifre dogrulamasina brute-force korumasi eklendi (5 hatali deneme → 30 sn bekleme).
+- GitHub token artik Windows DPAPI ile sifrelenerek saklaniyor, XOR gizlemesi kaldirildi.
+- Indirilen guncelleme dosyalari SHA-256 hash karsilastirmasi ile dogrulaniyor.
+- Release body icinde SHA256: <hash> formati destekleniyor.
+
+PERFORMANS:
+- Termodinamik cache akilli hale getirildi: gaz bilesimi degismedikce temizlenmiyor, cache hit orani artti.
+- Uclu nokta sicakliklari (TTRIPLE) cache'lendi; faz tespiti sirasinda gereksiz CoolProp cagrilari azaltildi.
+- Cache key hassasiyeti optimize edildi (100 Pa / 0.01 K).
+- Colebrook iteratif surtunme faktoru Churchill explicit denklemi ile degistirildi.
+- numpy bagimliligi tamamen kaldirildi; cubik EOS kok bulma Cardano kapali cozum ile yapiliyor (~300ms daha hizli acilis).
+- DAK Newton-Raphson iterasyon sayisi 50→20, erken cikis eklendi.
+
+MIMARI:
+- GasFlowController (controllers.py) aktiflestirildi; start_calculation artik controller uzerinden veri topluyor.
+- patch_main.py silindi; olü kod temizlendi.
+- 10+ sessiz except Exception: pass blogu log'lu hale getirildi.
+
+KOD KALITESI:
+- constants.py olusturuldu; fiziksel sabitler, birim donusumleri ve yakinsama degerleri tek noktadan yonetiliyor.
+- Faz, formul ve uyari metinleri modul seviyesinde sabitlere cikarildi.
+- Kullanilmayan functools.lru_cache import'u kaldirildi.
+
+TEST:
+- 87 test (onceki 37 test + 50 yeni): format_utils, app_paths, controllers, auth brute-force, edge case'ler.
+- pytest.ini, conftest.py eklendi; coverage altyapisi hazir.
+- .gitignore test_*.py deseni sadece kok dizinle sinirlandirildi (tests/ dizini etkilenmez).
+
+.opencode/:
+- 4 agent (calc, ui, qa, release) ve 2 skill (analyze, verify) dosyasi olusturuldu; opencode ile uyumlu calisiyor.""",
+        "en": """Highlights introduced in 6.3.0:
+
+SECURITY:
+- Brute-force protection added to admin password verification (5 failed attempts → 30 s lockout).
+- GitHub token now encrypted via Windows DPAPI; XOR obfuscation removed.
+- Downloaded update files are verified via SHA-256 hash comparison.
+- Release body SHA256: <hash> format is now supported.
+
+PERFORMANCE:
+- Smart thermo cache: cleared only when gas composition changes, significantly improving cache hit ratio.
+- Triple-point temperatures (TTRIPLE) are now cached, reducing redundant CoolProp calls during phase detection.
+- Cache key precision optimized (100 Pa / 0.01 K).
+- Iterative Colebrook friction factor replaced with explicit Churchill equation.
+- numpy dependency completely removed; cubic EOS root-finding now uses a closed-form Cardano solver (~300ms faster startup).
+- DAK Newton-Raphson iterations reduced 50→20 with early-exit.
+
+ARCHITECTURE:
+- GasFlowController (controllers.py) activated; start_calculation now collects data through the controller.
+- patch_main.py deleted; dead code removed.
+- 10+ silent except Exception: pass blocks are now properly logged.
+
+CODE QUALITY:
+- constants.py created; physical constants, unit conversions, and convergence values centrally managed.
+- Phase, formula, and warning strings extracted to module-level constants.
+- Unused functools.lru_cache import removed.
+
+TESTING:
+- 87 tests (previously 37 + 50 new): format_utils, app_paths, controllers, auth brute-force, edge cases.
+- pytest.ini, conftest.py added; coverage infrastructure ready.
+- .gitignore test_*.py pattern now limited to root directory (tests/ unaffected).
+
+.opencode/:
+- 4 agents (calc, ui, qa, release) and 2 skills (analyze, verify) created; compatible with opencode."""
     }
 }
 

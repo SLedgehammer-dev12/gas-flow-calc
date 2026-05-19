@@ -3,6 +3,11 @@ from data import PIPE_ROUGHNESS, FITTING_K_FACTORS
 from calculations import GasFlowCalculator
 from format_utils import safe_format, safe_number, safe_text
 from flow_utils import FLOW_MODE_INCOMPRESSIBLE, normalize_flow_mode
+from target_utils import (
+    TARGET_PRESSURE_DROP,
+    TARGET_MAX_LENGTH,
+    TARGET_MIN_DIAMETER,
+)
 
 class GasFlowController:
     def __init__(self):
@@ -45,12 +50,15 @@ class GasFlowController:
         # 2. Basic Params Validation
         p_in_val = self._parse_float(ui_state.get("p_in", 0))
         if p_in_val <= 0: errors.append(t("validation_positive_pressure") if "validation_positive_pressure" in t("validation_positive_pressure") else "Giriş basıncı pozitif olmalıdır.")
+        if p_in_val > 1000: errors.append("Giriş basıncı 1000 bar'dan büyük olamaz.")
         
         t_val = self._parse_float(ui_state.get("t_val", 25))
         if t_val <= -273.15: errors.append("Sıcaklık mutlak sıfırdan büyük olmalıdır.")
+        if t_val > 500: errors.append("Sıcaklık 500°C'den büyük olamaz.")
         
         flow_val = self._parse_float(ui_state.get("flow_val", 0))
         if flow_val <= 0: errors.append(t("validation_positive_flow") if "validation_positive_flow" in t("validation_positive_flow") else "Akış debisi pozitif olmalıdır.")
+        if flow_val > 1e8: errors.append("Akış debisi çok yüksek. Lütfen değeri kontrol edin.")
         
         target = ui_state.get("calc_target")
         
@@ -64,22 +72,26 @@ class GasFlowController:
         flow_type = ui_state.get("flow_type")
         flow_mode = normalize_flow_mode(flow_type)
         
-        if target == t("target_pressure_drop"):
+        if target == TARGET_PRESSURE_DROP:
             if len_val <= 0: errors.append("Boru uzunluğu pozitif olmalıdır.")
             if diam_val <= 0: errors.append("Boru çapı pozitif olmalıdır.")
             if thick_val >= diam_val / 2: errors.append("Et kalınlığı yarıçaptan küçük olmalıdır.")
-        elif target == t("target_max_length"):
+        elif target == TARGET_MAX_LENGTH:
             if target_p_val <= 0: errors.append("Hedef çıkış basıncı pozitif olmalıdır.")
             if diam_val <= 0: errors.append("Boru çapı pozitif olmalıdır.")
-        elif target == t("target_min_diameter"):
+        elif target == TARGET_MIN_DIAMETER:
             if max_vel <= 0: errors.append("Maksimum hız limiti pozitif olmalıdır.")
             if p_design_val <= 0: errors.append("Tasarım basıncı pozitif olmalıdır.")
             if flow_mode != FLOW_MODE_INCOMPRESSIBLE and len_val <= 0:
                 errors.append("Sıkıştırılabilir akış çap hesabı için boru uzunluğu gereklidir.")
 
         D_inner = diam_val - 2 * thick_val
-        if target != t("target_min_diameter") and D_inner <= 0:
+        if target != TARGET_MIN_DIAMETER and D_inner <= 0:
             errors.append("Geçersiz boru çapı/kalınlığı. İç çap negatif veya sıfır olamaz.")
+        
+        smys_val = self._parse_float(ui_state.get("smys_val", 0))
+        if target == TARGET_MIN_DIAMETER and smys_val <= 0:
+            errors.append("Minimum çap hesabı için SMYS (akma dayanımı) pozitif olmalıdır.")
             
         if errors:
             return None, errors
@@ -133,7 +145,7 @@ class GasFlowController:
             "flow_property": flow_type,
             "flow_mode": flow_mode,
             "target": target,
-            "P_out_target": abs_pa_target if target == t("target_max_length") else 0,
+            "P_out_target": abs_pa_target if target == TARGET_MAX_LENGTH else 0,
             
             # Min Diameter additions
             "max_velocity": max_vel,
@@ -152,14 +164,14 @@ class GasFlowController:
         if not result: return []
         rows = []
         
-        if target == t("target_pressure_drop"):
+        if target == TARGET_PRESSURE_DROP:
             rows.append(("Giriş Basıncı", safe_format(self._parse_float(ui_state.get('p_in', 0)), ".2f"), ui_state.get('p_unit', '')))
             rows.append(("Çıkış Basıncı", safe_format(safe_number(result['P_out'], 0.0)/1e5, ".4f"), "bara"))
             rows.append(("Toplam Basınç Kaybı", safe_format(safe_number(result['delta_p_total'], 0.0)/1e5, ".4f"), "bar"))
             rows.append(("Giriş Hızı", safe_format(result['velocity_in'], ".2f"), "m/s"))
             rows.append(("Çıkış Hızı", safe_format(result['velocity_out'], ".2f"), "m/s"))
             
-        elif target == t("target_max_length"):
+        elif target == TARGET_MAX_LENGTH:
             if "error" in result:
                 rows.append(("Durum", "HATA", "", "error"))
                 rows.append(("Mesaj", safe_text(result['error']), ""))
@@ -167,7 +179,7 @@ class GasFlowController:
                 rows.append(("Maksimum Uzunluk", safe_format(result['L_max'], ".2f"), "m"))
                 rows.append(("Reynolds", safe_format(result['Re'], ".0f"), ""))
                 
-        elif target == t("target_min_diameter"):
+        elif target == TARGET_MIN_DIAMETER:
             if result.get('selected_pipe'):
                 p = result['selected_pipe']
                 rows.append(("Seçilen Boru", f"{safe_text(p['nominal'])}\"", f"Sch {safe_text(p['schedule'])}", "success"))

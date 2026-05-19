@@ -1,5 +1,10 @@
 import tkinter as tk
 from translations import t
+from target_utils import (
+    TARGET_PRESSURE_DROP,
+    TARGET_MAX_LENGTH,
+    TARGET_MIN_DIAMETER,
+)
 from ui.widgets import ValidationHelper
 
 
@@ -150,9 +155,9 @@ class SchematicDrawer:
 
         # ========== BAŞLIK SATIRI ==========
         title_map = {
-            t("target_pressure_drop"): ("Basınç Düşümü Analizi", "P_in · T · Q · L · D  →  P_out"),
-            t("target_max_length"):    ("Maksimum Uzunluk Analizi", "P_in · P_out · T · Q · D  →  L_max"),
-            t("target_min_diameter"):  ("Minimum Çap Seçimi", "P_in · T · Q · V_max  →  D_min"),
+            TARGET_PRESSURE_DROP: ("Basınç Düşümü Analizi", "P_in · T · Q · L · D  →  P_out"),
+            TARGET_MAX_LENGTH:    ("Maksimum Uzunluk Analizi", "P_in · P_out · T · Q · D  →  L_max"),
+            TARGET_MIN_DIAMETER:  ("Minimum Çap Seçimi", "P_in · T · Q · V_max  →  D_min"),
         }
         t1, t2 = title_map.get(target, (target, ""))
         canvas.create_text(20, 18, text=t1, font=("Segoe UI", 11, "bold"), fill=C['known'], anchor="w")
@@ -165,10 +170,10 @@ class SchematicDrawer:
             'completed':  (C['pipe_ok'],   C['pipe_olok']),
             'error':      (C['pipe_err'],  C['pipe_olerr']),
         }
-        if target == t("target_min_diameter") and state == 'pending':
+        if target == TARGET_MIN_DIAMETER and state == 'pending':
             p_fill, p_out_col = C['pipe_pnd'], C['pipe_olpnd']
             dash = (6, 4)
-        elif target == t("target_max_length") and state in ('pending', 'calculating'):
+        elif target == TARGET_MAX_LENGTH and state in ('pending', 'calculating'):
             p_fill, p_out_col = C['pipe_ok'], C['pipe_olok']
             dash = ()
         else:
@@ -231,11 +236,11 @@ class SchematicDrawer:
         # ========== HEDEF BAZLI İÇERİK ==========
         result = getattr(self.app, 'last_result', None) if state == 'completed' else None
 
-        if target == t("target_pressure_drop"):
+        if target == TARGET_PRESSURE_DROP:
             self._draw_pressure_drop_schematic(canvas, w, h, mid_y, pipe_x1, pipe_x2, pipe_half, C, result)
-        elif target == t("target_max_length"):
+        elif target == TARGET_MAX_LENGTH:
             self._draw_max_length_schematic(canvas, w, h, mid_y, pipe_x1, pipe_x2, pipe_half, C, result)
-        elif target == t("target_min_diameter"):
+        elif target == TARGET_MIN_DIAMETER:
             self._draw_min_diameter_schematic(canvas, w, h, mid_y, pipe_x1, pipe_x2, pipe_half, C, result)
 
     # ──────────────────────────────────────────────

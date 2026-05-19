@@ -1,6 +1,11 @@
 import tkinter as tk
 from tkinter import ttk
 from translations import t
+from target_utils import (
+    TARGET_PRESSURE_DROP,
+    TARGET_MAX_LENGTH,
+    TARGET_MIN_DIAMETER,
+)
 
 
 class ProcessPanel(ttk.LabelFrame):
@@ -91,12 +96,12 @@ class ProcessPanel(ttk.LabelFrame):
         seg_frame = ttk.Frame(self)
         seg_frame.pack(fill="x", pady=(4, 0))
 
-        self.app.calc_target = tk.StringVar(value=t("target_min_diameter"))
+        self.app.calc_target = tk.StringVar(value=TARGET_MIN_DIAMETER)
 
         targets = [
-            ("📉  " + t("target_pressure_drop"), t("target_pressure_drop")),
-            ("📏  " + t("target_max_length"), t("target_max_length")),
-            ("⭕  " + t("target_min_diameter"), t("target_min_diameter")),
+            ("📉  " + t("target_pressure_drop"), TARGET_PRESSURE_DROP),
+            ("📏  " + t("target_max_length"), TARGET_MAX_LENGTH),
+            ("⭕  " + t("target_min_diameter"), TARGET_MIN_DIAMETER),
         ]
 
         self.app._seg_buttons = {}

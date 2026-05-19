@@ -169,8 +169,7 @@ def test_calculate_pressure_drop_liquid_uses_phase_specific_model(calc):
 
     result = calc.calculate_pressure_drop(inputs, num_segments=8)
     assert result["phase_profile"][0]["phase"] == "liquid"
-    assert result["phase_info"]["phase"] == "liquid"
-    assert result["phase_info"]["formula_mode"] == "single_phase_liquid"
+    assert result["phase_profile"][0]["formula_mode"] == "single_phase_liquid"
     assert result["delta_p_total"] > 0
     assert math.isfinite(result["delta_p_acceleration"])
     assert result["gas_props_out"]["density"] > 0
