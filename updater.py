@@ -545,9 +545,35 @@ class Updater:
             return {name for name in names if name in self.exclude_on_apply}
 
         shutil.copytree(target_dir, backup_dir, ignore=ignore_patterns)
-        self._copy_over(source_dir, target_dir)
+        try:
+            self._copy_over(source_dir, target_dir)
+        except Exception as e:
+            self.log(f"Guncelleme uygulanirken hata olustu, geri yukleme baslatiliyor: {e}", level="ERROR")
+            try:
+                self._rollback_update(backup_dir, target_dir)
+                self.log("Geri yukleme tamamlandi.", level="INFO")
+            except Exception as rollback_err:
+                self.log(f"Geri yukleme sirasinda kritik hata: {rollback_err}", level="CRITICAL")
+            raise RuntimeError(f"Guncelleme uygulanamadi. Geri yukleme denendi. Hata: {e}") from e
+
         self.log("Guncelleme basariyla uygulandi. Uygulamayi yeniden baslatmaniz onerilir.")
         return {"backup_dir": backup_dir}
+
+    def _rollback_update(self, backup_dir: str, target_dir: str):
+        if not os.path.isdir(backup_dir):
+            return
+        for item in os.listdir(target_dir):
+            if item in self.exclude_on_apply:
+                continue
+            path = os.path.join(target_dir, item)
+            try:
+                if os.path.isdir(path) and not os.path.islink(path):
+                    shutil.rmtree(path)
+                else:
+                    os.remove(path)
+            except Exception as e:
+                self.log(f"Geri yukleme temizligi sirasinda dosya silinemedi: {path}, Hata: {e}", level="WARNING")
+        self._copy_over(backup_dir, target_dir)
 
     def _copy_over(self, src: str, dst: str):
         for root, dirs, files in os.walk(src):

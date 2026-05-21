@@ -133,6 +133,27 @@ class TestGasFlowController(unittest.TestCase):
         rows = self.controller.get_results_table_data(result, TARGET_MAX_LENGTH, state)
         self.assertGreater(len(rows), 0)
 
+    def test_get_results_table_data_max_length_success(self):
+        result = {
+            "L_max": 250.0,
+            "Re": 120000,
+            "f": 0.0185,
+            "velocity_in": 12.5,
+            "velocity_out": 14.2,
+            "P_out": 15e5,
+        }
+        state = self._base_ui_state()
+        rows = self.controller.get_results_table_data(result, TARGET_MAX_LENGTH, state)
+        
+        # Verify specific fields are in the result rows
+        param_names = [row[0] for row in rows]
+        self.assertIn("Maksimum Uzunluk", param_names)
+        self.assertIn("Reynolds", param_names)
+        self.assertIn("Sürtünme Faktörü (f)", param_names)
+        self.assertIn("Giriş Hızı", param_names)
+        self.assertIn("Çıkış Hızı", param_names)
+        self.assertIn("Çıkış Basıncı", param_names)
+
     def test_get_results_table_data_empty_result(self):
         rows = self.controller.get_results_table_data(None, TARGET_PRESSURE_DROP, {})
         self.assertEqual(rows, [])

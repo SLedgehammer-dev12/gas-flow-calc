@@ -6,6 +6,7 @@ from target_utils import (
     TARGET_MAX_LENGTH,
     TARGET_MIN_DIAMETER,
 )
+from ui.widgets import ValidatedEntry
 
 
 class ProcessPanel(ttk.LabelFrame):
@@ -28,9 +29,16 @@ class ProcessPanel(ttk.LabelFrame):
         # Row 0: Pressure + Temperature
         ttk.Label(grid, text=t("inlet_pressure")).grid(row=0, column=0, sticky="w", pady=6)
         self.app.p_in_var = tk.DoubleVar(value=50.0)
-        ttk.Entry(grid, textvariable=self.app.p_in_var, width=10).grid(
-            row=0, column=1, padx=(4, 4), sticky="w"
-        )
+        ValidatedEntry(
+            grid, 
+            textvariable=self.app.p_in_var, 
+            width=10, 
+            validation_type="float",
+            min_value=0.0001, 
+            allow_zero=False, 
+            allow_negative=False
+        ).grid(row=0, column=1, padx=(4, 4), sticky="w")
+        
         self.app.p_unit = ttk.Combobox(
             grid, values=["Barg", "Bara", "Psig", "Psia"], width=7, state="readonly"
         )
@@ -39,9 +47,16 @@ class ProcessPanel(ttk.LabelFrame):
 
         ttk.Label(grid, text=t("temperature")).grid(row=0, column=3, sticky="w", padx=(4, 4))
         self.app.t_var = tk.DoubleVar(value=20.0)
-        ttk.Entry(grid, textvariable=self.app.t_var, width=10).grid(
-            row=0, column=4, padx=(4, 4), sticky="w"
-        )
+        ValidatedEntry(
+            grid, 
+            textvariable=self.app.t_var, 
+            width=10, 
+            validation_type="float",
+            min_value=-273.15, 
+            allow_zero=True, 
+            allow_negative=True
+        ).grid(row=0, column=4, padx=(4, 4), sticky="w")
+        
         self.app.t_unit = ttk.Combobox(
             grid, values=["°C", "°F", "K"], width=7, state="readonly"
         )
@@ -51,9 +66,16 @@ class ProcessPanel(ttk.LabelFrame):
         # Row 1: Flow + Flow Type
         ttk.Label(grid, text=t("flow_rate")).grid(row=1, column=0, sticky="w", pady=6)
         self.app.flow_var = tk.DoubleVar(value=1945000.0)
-        ttk.Entry(grid, textvariable=self.app.flow_var, width=10).grid(
-            row=1, column=1, padx=(4, 4), sticky="w"
-        )
+        ValidatedEntry(
+            grid, 
+            textvariable=self.app.flow_var, 
+            width=10, 
+            validation_type="float",
+            min_value=0.0001, 
+            allow_zero=False, 
+            allow_negative=False
+        ).grid(row=1, column=1, padx=(4, 4), sticky="w")
+        
         self.app.flow_unit = ttk.Combobox(
             grid, values=["Sm³/h", "kg/s"], width=7, state="readonly"
         )

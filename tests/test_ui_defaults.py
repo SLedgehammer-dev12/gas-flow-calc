@@ -89,3 +89,60 @@ class TestUIDefaults(unittest.TestCase):
             self.app.silent_update_check()
         except Exception as e:
             self.fail(f"silent_update_check raised {e}")
+
+    def test_min_diameter_mode_disables_pipe_fields(self):
+        self.app.calc_target.set(TARGET_MIN_DIAMETER)
+        self.app.update_ui_visibility()
+        self.root.update_idletasks()
+        
+        self.assertEqual(str(self.app.nps_combo.cget("state")), "disabled")
+        self.assertEqual(str(self.app.schedule_combo.cget("state")), "disabled")
+        self.assertEqual(str(self.app.ent_diam.cget("state")), "disabled")
+        self.assertEqual(str(self.app.ent_thick.cget("state")), "disabled")
+
+        self.app.calc_target.set(TARGET_PRESSURE_DROP)
+        self.app.update_ui_visibility()
+        self.root.update_idletasks()
+
+        self.assertEqual(str(self.app.nps_combo.cget("state")), "readonly")
+        self.assertEqual(str(self.app.schedule_combo.cget("state")), "readonly")
+
+    def test_min_diameter_result_synchronization(self):
+        import queue
+        self.app.calc_target.set(TARGET_MIN_DIAMETER)
+        self.app.update_ui_visibility()
+        self.root.update_idletasks()
+
+        result = {
+            "selected_pipe": {
+                "nominal": "4",
+                "schedule": "40",
+                "OD_mm": 114.3,
+                "t_mm": 6.02,
+                "D_inner_mm": 102.26,
+                "t_required_mm": 3.2,
+            },
+            "max_vel": 20.0,
+            "velocity_in": 12.5,
+            "velocity_out": 14.2,
+            "P_out": 15e5,
+            "velocity_status": "Uygun",
+            "alternatives": {}
+        }
+        mock_data = {
+            "result": result,
+            "report": "MOCK REPORT CONTENT"
+        }
+        
+        self.app.calc_queue.put(("SUCCESS", mock_data))
+        self.app.check_calc_queue()
+        
+        self.assertEqual(self.app.nps_combo.get(), "4")
+        self.assertEqual(self.app.schedule_combo.get(), "40")
+        self.assertEqual(self.app.diam_var.get(), 114.3)
+        self.assertEqual(self.app.thick_var.get(), 6.02)
+        
+        self.assertEqual(str(self.app.nps_combo.cget("state")), "disabled")
+        self.assertEqual(str(self.app.schedule_combo.cget("state")), "disabled")
+        self.assertEqual(str(self.app.ent_diam.cget("state")), "disabled")
+        self.assertEqual(str(self.app.ent_thick.cget("state")), "disabled")

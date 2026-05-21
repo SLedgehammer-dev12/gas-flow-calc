@@ -45,6 +45,72 @@ from ui.panels.results_panel import ResultsPanel
 from ui.panels.log_panel import LogPanel
 
 
+# Modern font stack with graceful fallbacks
+from tkinter import font as tkfont
+FONT_FAMILY = "Segoe UI"
+
+def initialize_font_family(root=None):
+    global FONT_FAMILY
+    try:
+        available = tkfont.families(root)
+        candidates = ["Outfit", "Inter", "SF Pro Text", "Helvetica Neue", "Segoe UI", "Arial"]
+        for c in candidates:
+            if c in available:
+                FONT_FAMILY = c
+                break
+    except Exception:
+        pass
+
+
+THEMES = {
+    "light": {
+        "bg": "#f0f3f8",
+        "card": "#ffffff",
+        "accent": "#1a237e",
+        "accent2": "#283593",
+        "accent_light": "#e8eaf6",
+        "txt_dark": "#1c2032",
+        "txt_mid": "#455a64",
+        "txt_light": "#78909c",
+        "success": "#2e7d32",
+        "warn": "#e65100",
+        "err": "#c62828",
+        "entry_bg": "white",
+        "entry_fg": "black"
+    },
+    "dark": {
+        "bg": "#121214",
+        "card": "#1e1e24",
+        "accent": "#8c9eff",
+        "accent2": "#b388ff",
+        "accent_light": "#2c2c38",
+        "txt_dark": "#e2e2e9",
+        "txt_mid": "#a5a5b2",
+        "txt_light": "#707080",
+        "success": "#81c784",
+        "warn": "#ffb74d",
+        "err": "#e57373",
+        "entry_bg": "#1e1e24",
+        "entry_fg": "#e2e2e9"
+    },
+    "contrast": {
+        "bg": "#000000",
+        "card": "#000000",
+        "accent": "#ffff00",
+        "accent2": "#00ffff",
+        "accent_light": "#333333",
+        "txt_dark": "#ffffff",
+        "txt_mid": "#ffffff",
+        "txt_light": "#dddddd",
+        "success": "#00ff00",
+        "warn": "#ffaa00",
+        "err": "#ff0000",
+        "entry_bg": "#000000",
+        "entry_fg": "#ffffff"
+    }
+}
+
+
 def load_app_config():
     return load_config()
 
@@ -69,9 +135,23 @@ load_language_from_config()
 class GasFlowCalculatorApp:
     def __init__(self, root):
         self.root = root
+        initialize_font_family(self.root)
+        self.font_family = FONT_FAMILY
+        self.root.font_family = FONT_FAMILY
         self.root.title(f"{t('app_title')} V{APP_VERSION}")
         self.root.geometry("1450x950")
         self.root.minsize(1100, 800)
+
+        # Tema Ayarı
+        cfg = load_app_config()
+        self.current_theme = cfg.get("theme", "light")
+        if self.current_theme not in THEMES:
+            self.current_theme = "light"
+        
+        # Paylaşımlı renk sabitlerini ilk başta root üzerinde sakla
+        self._colors = THEMES[self.current_theme]
+        self.root._colors = THEMES[self.current_theme]
+        self.root.current_theme = self.current_theme
 
         # Hesaplama Motoru
         self.calculator = GasFlowCalculator()
@@ -173,7 +253,7 @@ class GasFlowCalculatorApp:
         top.transient(self.root)
         top.grab_set()
 
-        txt = ScrolledText(top, wrap="word", font=("Segoe UI", 10))
+        txt = ScrolledText(top, wrap="word", font=(FONT_FAMILY, 10))
         txt.pack(fill="both", expand=True, padx=10, pady=10)
         txt.insert("1.0", get_release_notes(APP_VERSION, language))
         txt.config(state="disabled")
@@ -222,6 +302,13 @@ class GasFlowCalculatorApp:
         lang_menu.add_command(label="🇹🇷 " + t("lang_turkish"), command=lambda: self.change_language("tr"))
         lang_menu.add_command(label="🇬🇧 " + t("lang_english"), command=lambda: self.change_language("en"))
         
+        # Görünüm (Tema) Menüsü
+        view_menu = Menu(menubar, tearoff=0)
+        menubar.add_cascade(label=t("menu_view"), menu=view_menu)
+        view_menu.add_command(label="☀️  " + t("theme_light"), command=lambda: self.change_theme("light"))
+        view_menu.add_command(label="🌙  " + t("theme_dark"), command=lambda: self.change_theme("dark"))
+        view_menu.add_command(label="👁️  " + t("theme_contrast"), command=lambda: self.change_theme("contrast"))
+        
         # Yardım Menüsü
         help_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label=t("menu_help"), menu=help_menu)
@@ -252,6 +339,34 @@ class GasFlowCalculatorApp:
             self._save_session_for_lang_change()
             self.root.destroy()
             os.execl(sys.executable, sys.executable, *sys.argv)
+            
+    def change_theme(self, theme_name):
+        """Temayı değiştirir, config.json dosyasını günceller ve arayüz stillerini yeniler."""
+        if theme_name not in THEMES:
+            return
+        
+        self.current_theme = theme_name
+        self.root.current_theme = theme_name
+        
+        # Config dosyasını güncelle
+        try:
+            cfg = load_app_config()
+            cfg["theme"] = theme_name
+            save_app_config(cfg)
+        except Exception as e:
+            self.log_message(f"Tema ayarı kaydedilemedi: {e}", level="WARNING")
+        
+        # Stilleri yeniden yükle
+        self.setup_styles()
+        
+        # Manuel renkli alanları güncelle (Schematic canvas vb.)
+        self.refresh_schematic()
+        
+        # Grafikleri yeniden çizdir
+        if hasattr(self, 'charts_container') and getattr(self, 'last_result', None):
+            show_graphs(self.charts_container, self.last_result, app=self)
+            
+        self.log_message(f"Tema '{theme_name}' olarak değiştirildi.", level="INFO")
     
     def _get_session_file_path(self):
         """Dil değişikliği oturum dosyasının yolunu döndürür."""
@@ -299,24 +414,25 @@ class GasFlowCalculatorApp:
         style.theme_use('clam')
 
         # ── Renk Sistemi ─────────────────────────────────────
-        BG          = "#f0f3f8"        # Ana arka plan (soğuk gri)
-        CARD        = "#ffffff"        # Panel / kart arka planı
-        ACCENT      = "#1a237e"        # Koyu lacivert ana vurgu rengi
-        ACCENT2     = "#283593"        # Biraz açık vurgu
-        ACCENT_LIGHT= "#e8eaf6"        # Açık lacivert (hover / highlight)
-        TXT_DARK    = "#1c2032"        # Koyu metin
-        TXT_MID     = "#455a64"        # Orta metin
-        TXT_LIGHT   = "#78909c"        # Açık metin / hint
-        SUCCESS     = "#2e7d32"
-        WARN        = "#e65100"
-        ERR         = "#c62828"
+        theme_colors = THEMES.get(self.current_theme, THEMES["light"])
+        BG          = theme_colors["bg"]
+        CARD        = theme_colors["card"]
+        ACCENT      = theme_colors["accent"]
+        ACCENT2     = theme_colors["accent2"]
+        ACCENT_LIGHT= theme_colors["accent_light"]
+        TXT_DARK    = theme_colors["txt_dark"]
+        TXT_MID     = theme_colors["txt_mid"]
+        TXT_LIGHT   = theme_colors["txt_light"]
+        SUCCESS     = theme_colors["success"]
+        WARN        = theme_colors["warn"]
+        ERR         = theme_colors["err"]
         # ─────────────────────────────────────────────────────
 
         # Global
         style.configure(".",
                         background=BG,
                         foreground=TXT_DARK,
-                        font=("Segoe UI", 10),
+                        font=(FONT_FAMILY, 10),
                         focuscolor=ACCENT2)
 
         # ── Frame'ler ──
@@ -328,52 +444,53 @@ class GasFlowCalculatorApp:
                         background=CARD,
                         relief="flat",
                         borderwidth=1,
-                        bordercolor="#dee2e6")
+                        bordercolor=ACCENT_LIGHT if self.current_theme != "light" else "#dee2e6")
         style.configure("TLabelframe.Label",
                         background=CARD,
                         foreground=ACCENT,
-                        font=("Segoe UI", 10, "bold"))
+                        font=(FONT_FAMILY, 10, "bold"))
         style.configure("Bold.TLabelframe.Label",
                         background=CARD,
                         foreground=ACCENT,
-                        font=("Segoe UI", 10, "bold"))
+                        font=(FONT_FAMILY, 10, "bold"))
 
         # ── Notebook (Sekmeler) ──
         style.configure("TNotebook",
                         background=BG,
                         tabmargins=[2, 5, 2, 0])
         style.configure("TNotebook.Tab",
-                        background="#d1d8e6",
+                        background=ACCENT_LIGHT if self.current_theme != "light" else "#d1d8e6",
                         foreground=TXT_MID,
                         padding=[10, 5],
-                        font=("Segoe UI", 9))
+                        font=(FONT_FAMILY, 9))
         style.map("TNotebook.Tab",
                   background=[("selected", CARD)],
                   foreground=[("selected", ACCENT)],
-                  font=[("selected", ("Segoe UI", 9, "bold"))])
+                  font=[("selected", (FONT_FAMILY, 9, "bold"))])
 
         # ── Butonlar ──
         style.configure("TButton",
-                        font=("Segoe UI", 10),
+                        font=(FONT_FAMILY, 10),
                         padding=[8, 5],
-                        background="#dde3ef",
+                        background=ACCENT_LIGHT if self.current_theme != "light" else "#dde3ef",
                         foreground=TXT_DARK,
                         relief="flat")
         style.map("TButton",
-                  background=[("active", ACCENT_LIGHT), ("pressed", "#c5cae9")])
+                  background=[("active", ACCENT), ("pressed", ACCENT2)],
+                  foreground=[("active", "#ffffff")])
 
         # Seçim butonları (Hesaplama Hedefi)
         style.configure("SegBtn.TButton",
-                        font=("Segoe UI", 9),
+                        font=(FONT_FAMILY, 9),
                         padding=[8, 4],
-                        background="#dde3ef",
+                        background=ACCENT_LIGHT if self.current_theme != "light" else "#dde3ef",
                         foreground=TXT_MID,
                         relief="flat")
         style.map("SegBtn.TButton",
                   background=[("active", ACCENT_LIGHT)])
 
         style.configure("SegBtnActive.TButton",
-                        font=("Segoe UI", 9, "bold"),
+                        font=(FONT_FAMILY, 9, "bold"),
                         padding=[8, 4],
                         background=ACCENT,
                         foreground="#ffffff",
@@ -382,29 +499,29 @@ class GasFlowCalculatorApp:
                   background=[("active", ACCENT2)])
 
         # ── Label'lar ──
-        style.configure("TLabel",    background=CARD, foreground=TXT_DARK, font=("Segoe UI", 10))
+        style.configure("TLabel",    background=CARD, foreground=TXT_DARK, font=(FONT_FAMILY, 10))
         style.configure("Header.TLabel",
-                        font=("Segoe UI", 14, "bold"),
+                        font=(FONT_FAMILY, 14, "bold"),
                         foreground=ACCENT,
                         background=CARD)
         style.configure("Sub.TLabel",
-                        font=("Segoe UI", 9),
+                        font=(FONT_FAMILY, 9),
                         foreground=TXT_LIGHT,
                         background=CARD)
         style.configure("Hint.TLabel",
-                        font=("Segoe UI", 9, "italic"),
+                        font=(FONT_FAMILY, 9, "italic"),
                         foreground=TXT_LIGHT,
                         background=CARD)
 
         # ── Treeview ──
         style.configure("Treeview",
-                        font=("Segoe UI", 9),
+                        font=(FONT_FAMILY, 9),
                         rowheight=26,
                         background=CARD,
                         fieldbackground=CARD,
                         foreground=TXT_DARK)
         style.configure("Treeview.Heading",
-                        font=("Segoe UI", 9, "bold"),
+                        font=(FONT_FAMILY, 9, "bold"),
                         background=ACCENT_LIGHT,
                         foreground=ACCENT)
         style.map("Treeview",
@@ -415,27 +532,24 @@ class GasFlowCalculatorApp:
         style.configure("TEntry",
                         padding=[4, 3],
                         relief="flat",
-                        foreground=TXT_DARK)
+                        foreground=TXT_DARK,
+                        fieldbackground=CARD)
         style.map("TEntry",
-                  fieldbackground=[("focus", "#eef2ff")])
+                  fieldbackground=[("focus", ACCENT_LIGHT)])
 
         # ── Combobox ──
-        style.configure("TCombobox", padding=[4, 3], relief="flat")
+        style.configure("TCombobox", padding=[4, 3], relief="flat", background=CARD, fieldbackground=CARD, foreground=TXT_DARK)
 
         # ── Scrollbar ──
-        style.configure("TScrollbar", background="#ced4da", troughcolor=CARD, relief="flat")
-        style.map("TScrollbar", background=[("active", ACCENT_LIGHT)])
+        style.configure("TScrollbar", background=ACCENT_LIGHT, troughcolor=BG, relief="flat")
+        style.map("TScrollbar", background=[("active", ACCENT)])
 
         # Root arka planı
         self.root.configure(bg=BG)
 
         # Paylaşımlı renk sabitlerini sakla (paneller kullanabilsin)
-        self._colors = {
-            'bg': BG, 'card': CARD, 'accent': ACCENT, 'accent2': ACCENT2,
-            'accent_light': ACCENT_LIGHT, 'txt_dark': TXT_DARK,
-            'txt_mid': TXT_MID, 'txt_light': TXT_LIGHT,
-            'success': SUCCESS, 'warn': WARN, 'err': ERR
-        }
+        self._colors = theme_colors
+        self.root._colors = theme_colors
 
     def validate_float(self, event):
         """Eski stil doğrulama - geriye uyumluluk için korundu."""
@@ -532,7 +646,7 @@ class GasFlowCalculatorApp:
             # Bekleme durumu - düz yeşil
             canvas.create_rectangle(0, 0, width, height, fill="#28a745", outline="")
             canvas.create_text(width/2, height/2, text=text, 
-                             font=("Segoe UI", 12, "bold"), fill="white")
+                             font=(FONT_FAMILY, 12, "bold"), fill="white")
         else:
             # İlerleme durumu - gri arka plan + yeşil ilerleme
             # Arka plan (gri)
@@ -545,7 +659,7 @@ class GasFlowCalculatorApp:
             
             # Metin
             canvas.create_text(width/2, height/2, text=text, 
-                             font=("Segoe UI", 12, "bold"), fill="white")
+                             font=(FONT_FAMILY, 12, "bold"), fill="white")
     
     def _on_progress_hover(self, event):
         """Mouse hover efekti."""
@@ -559,7 +673,7 @@ class GasFlowCalculatorApp:
             self.progress_canvas.delete("all")
             self.progress_canvas.create_rectangle(0, 0, width, height, fill="#2dbe50", outline="")
             self.progress_canvas.create_text(width/2, height/2, text=t("btn_calculate"), 
-                                            font=("Segoe UI", 12, "bold"), fill="white")
+                                            font=(FONT_FAMILY, 12, "bold"), fill="white")
     
     def _on_progress_leave(self, event):
         """Mouse leave efekti."""
@@ -608,10 +722,19 @@ class GasFlowCalculatorApp:
     
     def _on_target_or_input_change(self, event=None):
         """Hedef veya önemli girdi değiştiğinde."""
-        # Hesaplama sonuçlarını temizle (yeni hedef seçildi)
-        if event and event.widget == self.calc_target:
+        # Check if target actually changed to prevent infinite loops
+        target_val = self.calc_target.get()
+        current_target = getattr(self, '_current_target', None)
+        if current_target != target_val:
+            self._current_target = target_val
             self.schematic_state = "pending"
             self.last_result = None
+            
+            # Güncelle segment butonu stillerini
+            if hasattr(self, '_seg_buttons'):
+                for t_val, btn in self._seg_buttons.items():
+                    btn.config(style="SegBtnActive.TButton" if t_val == target_val else "SegBtn.TButton")
+                    
             # UI görünürlüğünü güncelle (hedef değişti)
             self.update_ui_visibility()
         self.refresh_schematic()
@@ -682,21 +805,21 @@ class GasFlowCalculatorApp:
         # Sol: Uygulama adı
         tk.Label(footer,
                  text=f"  Gas Flow Calc V{APP_VERSION}  |  © {datetime.now().year} Mühendislik Araçları",
-                 font=("Segoe UI", 8), bg="#1a237e", fg="#c5cae9").pack(side="left")
+                 font=(FONT_FAMILY, 8), bg="#1a237e", fg="#c5cae9").pack(side="left")
 
         # Sağ: Durum etiketleri
         self.footer_status = tk.Label(footer, text="Hazır",
-                                      font=("Segoe UI", 8, "bold"),
+                                      font=(FONT_FAMILY, 8, "bold"),
                                       bg="#1a237e", fg="#a5d6a7")
         self.footer_status.pack(side="right", padx=8)
 
         self.footer_model = tk.Label(footer, text="",
-                                     font=("Segoe UI", 8),
+                                     font=(FONT_FAMILY, 8),
                                      bg="#1a237e", fg="#90caf9")
         self.footer_model.pack(side="right", padx=8)
 
         self.footer_time = tk.Label(footer, text="",
-                                    font=("Segoe UI", 8),
+                                    font=(FONT_FAMILY, 8),
                                     bg="#1a237e", fg="#b0bec5")
         self.footer_time.pack(side="right", padx=8)
 
@@ -962,8 +1085,22 @@ class GasFlowCalculatorApp:
         # Tasarım Kriterleri: sadece Min.Çap modunda göster
         if target == TARGET_MIN_DIAMETER:
             self.design_frame.pack(fill="x", pady=5)
+            # Disable pipe geometry fields
+            self.nps_combo.config(state="disabled")
+            self.schedule_combo.config(state="disabled")
+            self.ent_diam.config(state="disabled")
+            self.ent_thick.config(state="disabled")
         else:
             self.design_frame.pack_forget()
+            # Enable pipe geometry fields
+            self.nps_combo.config(state="readonly")
+            self.schedule_combo.config(state="readonly")
+            if self.nps_combo.get():
+                self.ent_diam.config(state="readonly")
+                self.ent_thick.config(state="readonly")
+            else:
+                self.ent_diam.config(state="normal")
+                self.ent_thick.config(state="normal")
         
         if target == TARGET_PRESSURE_DROP:
             self.lbl_len.grid(row=0, column=4, padx=(15, 5)); self.ent_len.grid(row=0, column=5)
@@ -974,6 +1111,7 @@ class GasFlowCalculatorApp:
             self.pipe_panel.pack(fill="x", pady=5) # Göster
         elif target == TARGET_MIN_DIAMETER:
             self.lbl_max_vel.grid(row=0, column=4, padx=(15, 5)); self.ent_max_vel.grid(row=0, column=5)
+            self.pipe_panel.pack(fill="x", pady=5) # Göster
             
             # Sıkıştırılabilir akış ise Uzunluk da gerekli
             if normalize_flow_mode(self.flow_type.get()) == FLOW_MODE_COMPRESSIBLE:
@@ -1398,6 +1536,34 @@ class GasFlowCalculatorApp:
                 self.report_text.insert("end", data['report'])
                 self.last_result = data['result'] # Sonucu sakla
                 
+                # Minimum Çap modunda hesaplanan boru bilgilerini arayüze senkronize et
+                target = self.calc_target.get()
+                if target == TARGET_MIN_DIAMETER and data['result'].get('selected_pipe'):
+                    p = data['result']['selected_pipe']
+                    
+                    # Geçici olarak alanları aktif et
+                    self.nps_combo.config(state="readonly")
+                    self.schedule_combo.config(state="readonly")
+                    self.ent_diam.config(state="normal")
+                    self.ent_thick.config(state="normal")
+                    
+                    # Değerleri yaz
+                    self.nps_combo.set(p['nominal'])
+                    if p['nominal'] in ASME_B36_10M_DATA:
+                        schedules = list(ASME_B36_10M_DATA[p['nominal']]["schedules"].keys())
+                        self.schedule_combo.config(values=schedules)
+                    else:
+                        self.schedule_combo.config(values=[p['schedule']])
+                    self.schedule_combo.set(p['schedule'])
+                    self.diam_var.set(p['OD_mm'])
+                    self.thick_var.set(p['t_mm'])
+                    
+                    # Tekrar kilitli duruma getir
+                    self.nps_combo.config(state="disabled")
+                    self.schedule_combo.config(state="disabled")
+                    self.ent_diam.config(state="disabled")
+                    self.ent_thick.config(state="disabled")
+                
                 # Şema durumunu güncelle
                 self.schematic_state = "completed"
                 self.last_calculation_time = time.strftime("%H:%M:%S")
@@ -1409,7 +1575,7 @@ class GasFlowCalculatorApp:
                 self._update_warning_banner(data['result'])
                 
                 # Gömülü Grafikleri Çiz
-                show_graphs(self.charts_container, data['result'])
+                show_graphs(self.charts_container, data['result'], app=self)
                 
                 self.res_notebook.select(self.tab_table) # Tabloyu göster
                 
@@ -1592,7 +1758,7 @@ class GasFlowCalculatorApp:
         self.schematic_drawer.draw_schematic(event)
 
     def show_graphs(self):
-        show_graphs(self.root, getattr(self, 'last_result', None))
+        show_graphs(self.root, getattr(self, 'last_result', None), app=self)
     # Eski show_graphs silindi (ui.graphs'a taşındı)
 
     def _get_default_update_dir(self):

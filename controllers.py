@@ -178,6 +178,10 @@ class GasFlowController:
             else:
                 rows.append(("Maksimum Uzunluk", safe_format(result['L_max'], ".2f"), "m"))
                 rows.append(("Reynolds", safe_format(result['Re'], ".0f"), ""))
+                rows.append(("Sürtünme Faktörü (f)", safe_format(result.get('f'), ".5f"), ""))
+                rows.append(("Giriş Hızı", safe_format(result.get('velocity_in'), ".2f"), "m/s"))
+                rows.append(("Çıkış Hızı", safe_format(result.get('velocity_out'), ".2f"), "m/s"))
+                rows.append(("Çıkış Basıncı", safe_format(safe_number(result.get('P_out'), 0.0)/1e5, ".4f"), "bara"))
                 
         elif target == TARGET_MIN_DIAMETER:
             if result.get('selected_pipe'):

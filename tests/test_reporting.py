@@ -69,6 +69,10 @@ def test_max_length_report_includes_outlet_properties():
         "delta_p_pipe": 1.2e5,
         "delta_p_fittings": 2.5e4,
         "delta_p_acceleration": 1.4e3,
+        "velocity_in": 1.5,
+        "velocity_out": 1.8,
+        "P_out": 6.5e5,
+        "f": 0.02100,
         "gas_props_in": _sample_props(510.0),
         "gas_props_out": _sample_props(503.0),
     }
@@ -77,6 +81,10 @@ def test_max_length_report_includes_outlet_properties():
     assert "Maksimum Uzunluk" in report
     assert "AKISKAN OZELLIKLERI (GIRIS PT)" in report
     assert "AKISKAN OZELLIKLERI (CIKIS PT)" in report
+    assert "Akis Hizi (Giris): 1.50 m/s" in report
+    assert "Akis Hizi (Cikis): 1.80 m/s" in report
+    assert "Cikis Basinci: 6.5000 bara" in report
+    assert "Surtunme Faktoru (f): 0.02100" in report
 
 
 def test_min_diameter_report_includes_property_sections():

@@ -4,11 +4,12 @@
 
 ### Hedef patch
 
-- Onerilen patch: `v6.1.9`
+- Onerilen patch: `v6.3.0`
 - Kapsam:
-  - `Sm3/h` debi donusum regresyon duzeltmesi
-  - maksimum uzunluk 0.00 m kok neden duzeltmesi
-  - fitting-only imkansiz senaryo hata mesaji
+  - AGA-8 termodinamik modelleri (GERG-2008 ve DETAIL)
+  - Admin bruteforce kilidi ve token DPAPI şifrelemesi
+  - Sürtünme faktörü Colebrook -> Churchill explicit geçişi
+  - UI-Hesaplama senkronizasyonu ve Minimum Çap / Maksimum Uzunluk iyileştirmeleri
 
 ### Versioning
 

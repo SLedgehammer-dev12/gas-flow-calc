@@ -346,6 +346,32 @@ NOTLAR:
 • Proje kaydetme/yükleme ile çalışmalarınızı saklayabilirsiniz.
 """,
         
+        # Schematic
+        "schematic_title_pd": "Basınç Düşümü Analizi",
+        "schematic_title_ml": "Maksimum Uzunluk Analizi",
+        "schematic_title_md": "Minimum Çap Seçimi",
+        "schematic_weight": "Ağırlık",
+        "schematic_limit": "limit",
+        "schematic_laminar": "Laminar",
+        "schematic_transitional": "Geçiş",
+        "schematic_turbulent": "Türbülanslı",
+        "schematic_pipe_wt": "et",
+        "schematic_fitting": "Eleman",
+        
+        # Real-time Validation
+        "val_invalid_format": "Geçersiz sayı formatı",
+        "val_min_value": "Minimum değer",
+        "val_max_value": "Maksimum değer",
+        "val_no_zero": "Değer sıfır olamaz",
+        "val_no_negative": "Değer negatif olamaz",
+        
+        # Charts
+        "chart_distance": "Mesafe (m)",
+        "chart_pressure": "Basınç (bar)",
+        "chart_velocity": "Hız (m/s)",
+        "chart_pressure_profile": "Hat Boyunca Basınç Değişimi",
+        "chart_velocity_profile": "Hat Boyunca Hız Değişimi",
+        
         # Program Details
         "program_details_title": "Program Detayı ve Referanslar",
         "program_details_content": """PROGRAM DETAYI VE REFERANSLAR
@@ -484,6 +510,16 @@ REFERANSLAR:
         "factor_e": "Longit. Joint Factor (E):",
         "factor_t": "Temp. Derating Factor (T):",
         "unit_weight": "Unit Weight (API 5L):",
+        "opt_lowest_weight": "Optimize for Lowest Weight",
+        "fast_calc": "Fast Calculation (Skip Large)",
+        
+        # Results Section
+        "results_summary": "Summary Table",
+        "results_schematic": "System Schematic",
+        "results_report": "Detailed Report",
+        
+        # Buttons
+        "btn_calculate": "CALCULATE",
         "tooltip_factor_f": "Usually 0.72 (Class 1)",
         "tooltip_factor_e": "Usually 1.0 (Seamless or ERW)",
         "tooltip_factor_t": "Temp. Derating Factor (T)\n1.00 (<= 121°C)\n0.967 (135°C)\n0.933 (149°C)",
@@ -713,6 +749,32 @@ NOTES:
 • Results can be viewed in table, schematic and detailed report formats.
 • Save/load projects to preserve your work.
 """,
+        
+        # Schematic
+        "schematic_title_pd": "Pressure Drop Analysis",
+        "schematic_title_ml": "Maximum Length Analysis",
+        "schematic_title_md": "Minimum Diameter Selection",
+        "schematic_weight": "Weight",
+        "schematic_limit": "limit",
+        "schematic_laminar": "Laminar",
+        "schematic_transitional": "Transitional",
+        "schematic_turbulent": "Turbulent",
+        "schematic_pipe_wt": "wt",
+        "schematic_fitting": "Fitting",
+        
+        # Real-time Validation
+        "val_invalid_format": "Invalid number format",
+        "val_min_value": "Minimum value",
+        "val_max_value": "Maximum value",
+        "val_no_zero": "Value cannot be zero",
+        "val_no_negative": "Value cannot be negative",
+        
+        # Charts
+        "chart_distance": "Distance (m)",
+        "chart_pressure": "Pressure (bar)",
+        "chart_velocity": "Velocity (m/s)",
+        "chart_pressure_profile": "Pressure Profile Along the Line",
+        "chart_velocity_profile": "Velocity Profile Along the Line",
         
         # Program Details
         "program_details_title": "Program Details and References",

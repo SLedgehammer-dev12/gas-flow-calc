@@ -11,6 +11,8 @@ _FLOW_MODE_ALIASES = {
     "sÄ±kÄ±ÅŸtÄ±rÄ±labilir": FLOW_MODE_COMPRESSIBLE,
     "sÄ±kÄ±ÅŸtÄ±rÄ±lamaz": FLOW_MODE_INCOMPRESSIBLE,
 }
+_FLOW_MODE_ALIASES = {k.casefold(): v for k, v in _FLOW_MODE_ALIASES.items()}
+
 
 
 def normalize_flow_mode(value, default=FLOW_MODE_COMPRESSIBLE):

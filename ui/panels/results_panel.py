@@ -16,7 +16,7 @@ class ResultsPanel(ttk.Frame):
         self.app.summary_card = tk.Frame(self, bg="#e8f5e9", relief="groove", bd=1, height=40)
         self.app.summary_card.pack(fill="x", pady=(0, 5))
         self.app.summary_card.pack_propagate(False)
-        self.app.summary_label = tk.Label(self.app.summary_card, text="", font=("Segoe UI", 10, "bold"),
+        self.app.summary_label = tk.Label(self.app.summary_card, text="", font=(self.app.font_family, 10, "bold"),
                                        bg="#e8f5e9", fg="#2e7d32", anchor="center")
         self.app.summary_label.pack(fill="both", expand=True)
         self.app.summary_card.pack_forget()  # Başlangıçta gizle
@@ -24,7 +24,7 @@ class ResultsPanel(ttk.Frame):
         # Uyarı Afişi (Sonik sınır uyarıları vs)
         self.app.warning_card = tk.Frame(self, bg="#fff3cd", relief="solid", bd=1, height=35)
         self.app.warning_card.pack_propagate(False)
-        self.app.warning_label = tk.Label(self.app.warning_card, text="", font=("Segoe UI", 9, "bold"),
+        self.app.warning_label = tk.Label(self.app.warning_card, text="", font=(self.app.font_family, 9, "bold"),
                                        bg="#fff3cd", fg="#856404", anchor="center")
         self.app.warning_label.pack(fill="both", expand=True)
         # warning_card gizli başlıyor, hata/uyarı durumunda pack edilecek (summary_card'ın altına)

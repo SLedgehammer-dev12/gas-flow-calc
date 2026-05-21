@@ -135,7 +135,10 @@ def format_max_length_report(inputs, result):
         report += f"Fitting Kaybi: {safe_format((safe_number(result.get('delta_p_fittings'), 0.0) / 1e5), '.4f')} bar\n"
         if safe_number(result.get("delta_p_acceleration")) is not None:
             report += f"Ivmelenme Terimi: {safe_format((safe_number(result.get('delta_p_acceleration'), 0.0) / 1e5), '.4f')} bar\n"
-        report += "\n"
+        report += f"Akis Hizi (Giris): {safe_format(result.get('velocity_in'), '.2f')} m/s\n"
+        report += f"Akis Hizi (Cikis): {safe_format(result.get('velocity_out'), '.2f')} m/s\n"
+        report += f"Cikis Basinci: {safe_format((safe_number(result.get('P_out'), 0.0) / 1e5), '.4f')} bara\n"
+        report += f"Surtunme Faktoru (f): {safe_format(result.get('f'), '.5f')}\n\n"
     report += _format_fluid_sections(inputs, result)
     return report
 

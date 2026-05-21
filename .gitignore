@@ -27,3 +27,6 @@ build_release/
 # OS
 .DS_Store
 Thumbs.db
+
+# Build temp folder
+/Gas Flow Calc V6.1/

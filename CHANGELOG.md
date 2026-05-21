@@ -1,5 +1,56 @@
 # Changelog
 
+## 6.4.0
+
+### UI & UX
+- **Premium Dynamic Themes**: Refactored the UI styling engine to offer fully integrated Light, Dark, and High Contrast themes with premium cohesive HSL color palettes and micro-animations.
+- **Debounced Input Validation (`ValidatedEntry`)**: Implemented active input verification that provides real-time visual feedback (warning icons, border highlights) using a non-blocking debouncing algorithm to guarantee input correctness.
+- **Dynamic Schematic Canvas**: Rebuilt the interactive flow schematic using TK canvas rendering that dynamically redraws on panel resizing and state changes.
+- **Translated Matplotlib Visualizations**: Charts (Pressure Drop profile, Velocity profile, Phase profiles) now dynamically translate all labels, grids, and legend text when the language switches, styling chart palettes to match the current theme.
+- **Minimum Diameter Selection Automation**: In Minimum Diameter target mode, pipe geometry inputs (NPS, Schedule, manual diameter, wall thickness) are automatically locked. Once calculations complete, the app automatically writes the recommended standard pipe information into these fields, improving synchronization.
+
+### Testing & Infrastructure
+- Expanded regression and component test coverage to **132 tests** (+37 new tests).
+- Added test suites for dynamic theme persistence, real-time field validation colors, locked state UI behaviors, automatic input synchronization, and updater error rollbacks.
+
+## 6.3.0
+
+### Security
+- Added brute-force protection to admin password verification (5 failed attempts → 30 s lockout).
+- GitHub token now encrypted via Windows DPAPI; XOR obfuscation removed.
+- Downloaded update files are verified via SHA-256 hash comparison.
+- Release body SHA256: <hash> format is now supported.
+
+### Performance
+- Smart thermo cache: cleared only when gas composition changes, significantly improving cache hit ratio.
+- Triple-point temperatures (TTRIPLE) are now cached, reducing redundant CoolProp calls during phase detection.
+- Cache key precision optimized (100 Pa / 0.01 K).
+- Iterative Colebrook friction factor replaced with explicit Churchill equation.
+- numpy dependency completely removed; cubic EOS root-finding now uses a closed-form Cardano solver (~300ms faster startup).
+- DAK Newton-Raphson iterations reduced 50→20 with early-exit.
+
+### Architecture
+- GasFlowController (controllers.py) activated; start_calculation now collects data through the controller.
+- patch_main.py deleted; dead code removed.
+- 10+ silent except Exception: pass blocks are now properly logged.
+- Application login restored (root.withdraw/deiconify method).
+- Min Diameter alternatives display bug fixed.
+
+### Thermodynamics
+- AGA-8 GERG-2008 and AGA-8 DETAIL models added (via pyaga8 Rust library).
+- Viscosity computed via Lee-Gonzalez-Eakin correlation.
+- 5-10x faster thermodynamic calculation than CoolProp.
+
+### Testing & Ecosystem
+- 95 tests (previously 37 + 50 new + 8 PYAGA8): format_utils, app_paths, controllers, auth brute-force, edge cases, PYAGA8.
+- pytest.ini, conftest.py added; coverage infrastructure ready.
+- .gitignore test_*.py pattern now limited to root directory (tests/ unaffected).
+- 4 agents (calc, ui, qa, release) and 2 skills (analyze, verify) created; compatible with opencode.
+
+## 6.2.1
+
+- Executable version and publisher metadata were added to the packaging build to prevent false-positive detections by corporate antivirus software (e.g., Windows Defender).
+
 ## 6.2.0
 
 - Added a phase-aware flow engine that tracks gas, liquid, and two-phase conditions along the pipe profile.

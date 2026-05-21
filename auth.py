@@ -73,6 +73,27 @@ def update_passwords(admin_password: str | None = None, program_password: str | 
     return config
 
 
+_lockout_state = {
+    "program": {"attempts": 0, "locked_until": 0.0},
+    "admin": {"attempts": 0, "locked_until": 0.0},
+}
+
+
+def _check_and_update_lockout(parent, key: str) -> bool:
+    state = _lockout_state[key]
+    now = time.time()
+    if now < state["locked_until"]:
+        remaining = int(state["locked_until"] - now)
+        locked_text = _msg(
+            "auth_locked",
+            f"Cok fazla hatali deneme. {remaining} saniye bekleyin.",
+            f"Too many failed attempts. Please wait {remaining} seconds.",
+        )
+        messagebox.showerror(_msg("dialog_error", "Hata", "Error"), locked_text, parent=parent)
+        return True
+    return False
+
+
 def prompt_for_program_access(parent) -> bool:
     config = load_auth_config()
 
@@ -81,39 +102,43 @@ def prompt_for_program_access(parent) -> bool:
 
     prompt_title = _msg("auth_login_title", "Program Girisi", "Program Login")
     prompt_text = _msg("auth_login_prompt", "Program sifresini girin:", "Enter the program password:")
-    invalid_text = _msg(
-        "auth_login_invalid",
-        "Gecersiz program sifresi. Tekrar deneyin.",
-        "Invalid program password. Please try again.",
-    )
-    locked_text = _msg(
-        "auth_locked",
-        f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",
-        f"Too many failed attempts. Please wait {BRUTE_FORCE_DELAY_SECONDS} seconds.",
-    )
 
-    attempts = 0
     while True:
-        if attempts >= MAX_BRUTE_FORCE_ATTEMPTS:
-            messagebox.showerror(
-                _msg("dialog_error", "Hata", "Error"), locked_text, parent=parent
-            )
-            time.sleep(BRUTE_FORCE_DELAY_SECONDS)
-            attempts = 0
+        if _check_and_update_lockout(parent, "program"):
+            return False
 
         password = simpledialog.askstring(prompt_title, prompt_text, parent=parent, show="*")
         if password is None:
             return False
+
+        if _check_and_update_lockout(parent, "program"):
+            return False
+
         if verify_password(password, config[PROGRAM_HASH_KEY]):
+            _lockout_state["program"]["attempts"] = 0
+            _lockout_state["program"]["locked_until"] = 0.0
             return True
-        attempts += 1
-        remaining = MAX_BRUTE_FORCE_ATTEMPTS - attempts
-        remaining_text = _msg(
-            "auth_attempts_remaining",
-            f"Gecersiz sifre. Kalan deneme: {remaining}",
-            f"Invalid password. Remaining attempts: {remaining}",
-        )
-        messagebox.showerror(_msg("dialog_error", "Hata", "Error"), remaining_text, parent=parent)
+
+        state = _lockout_state["program"]
+        state["attempts"] += 1
+        if state["attempts"] >= MAX_BRUTE_FORCE_ATTEMPTS:
+            state["locked_until"] = time.time() + BRUTE_FORCE_DELAY_SECONDS
+            state["attempts"] = 0
+            locked_text = _msg(
+                "auth_locked",
+                f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",
+                f"Too many failed attempts. Please wait {BRUTE_FORCE_DELAY_SECONDS} seconds.",
+            )
+            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), locked_text, parent=parent)
+            return False
+        else:
+            remaining = MAX_BRUTE_FORCE_ATTEMPTS - state["attempts"]
+            remaining_text = _msg(
+                "auth_attempts_remaining",
+                f"Gecersiz sifre. Kalan deneme: {remaining}",
+                f"Invalid password. Remaining attempts: {remaining}",
+            )
+            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), remaining_text, parent=parent)
 
 
 def _force_first_time_password_setup(parent) -> bool:
@@ -134,16 +159,6 @@ def prompt_for_admin_password(parent) -> bool:
     config = load_auth_config()
     prompt_title = _msg("auth_admin_title", "Admin Dogrulama", "Admin Verification")
     prompt_text = _msg("auth_admin_prompt", "Admin sifresini girin:", "Enter the admin password:")
-    invalid_text = _msg(
-        "auth_admin_invalid",
-        "Gecersiz admin sifresi. Tekrar deneyin.",
-        "Invalid admin password. Please try again.",
-    )
-    locked_text = _msg(
-        "auth_locked",
-        f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",
-        f"Too many failed attempts. Please wait {BRUTE_FORCE_DELAY_SECONDS} seconds.",
-    )
 
     if ADMIN_HASH_KEY not in config:
         messagebox.showerror(
@@ -153,28 +168,42 @@ def prompt_for_admin_password(parent) -> bool:
         )
         return False
 
-    attempts = 0
     while True:
-        if attempts >= MAX_BRUTE_FORCE_ATTEMPTS:
-            messagebox.showerror(
-                _msg("dialog_error", "Hata", "Error"), locked_text, parent=parent
-            )
-            time.sleep(BRUTE_FORCE_DELAY_SECONDS)
-            attempts = 0
+        if _check_and_update_lockout(parent, "admin"):
+            return False
 
         password = simpledialog.askstring(prompt_title, prompt_text, parent=parent, show="*")
         if password is None:
             return False
+
+        if _check_and_update_lockout(parent, "admin"):
+            return False
+
         if verify_password(password, config[ADMIN_HASH_KEY]):
+            _lockout_state["admin"]["attempts"] = 0
+            _lockout_state["admin"]["locked_until"] = 0.0
             return True
-        attempts += 1
-        remaining = MAX_BRUTE_FORCE_ATTEMPTS - attempts
-        remaining_text = _msg(
-            "auth_admin_attempts_remaining",
-            f"Gecersiz sifre. Kalan deneme: {remaining}",
-            f"Invalid password. Remaining attempts: {remaining}",
-        )
-        messagebox.showerror(_msg("dialog_error", "Hata", "Error"), remaining_text, parent=parent)
+
+        state = _lockout_state["admin"]
+        state["attempts"] += 1
+        if state["attempts"] >= MAX_BRUTE_FORCE_ATTEMPTS:
+            state["locked_until"] = time.time() + BRUTE_FORCE_DELAY_SECONDS
+            state["attempts"] = 0
+            locked_text = _msg(
+                "auth_locked",
+                f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",
+                f"Too many failed attempts. Please wait {BRUTE_FORCE_DELAY_SECONDS} seconds.",
+            )
+            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), locked_text, parent=parent)
+            return False
+        else:
+            remaining = MAX_BRUTE_FORCE_ATTEMPTS - state["attempts"]
+            remaining_text = _msg(
+                "auth_admin_attempts_remaining",
+                f"Gecersiz sifre. Kalan deneme: {remaining}",
+                f"Invalid password. Remaining attempts: {remaining}",
+            )
+            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), remaining_text, parent=parent)
 
 
 class PasswordManagementDialog(tk.Toplevel):

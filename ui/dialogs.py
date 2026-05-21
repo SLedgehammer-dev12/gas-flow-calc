@@ -26,9 +26,10 @@ def show_user_guide(parent):
     except Exception:
         pass
     
+    font_family = getattr(parent, "font_family", "Segoe UI")
     title_frame = ttk.Frame(guide_window)
     title_frame.pack(fill="x", padx=15, pady=(15, 5))
-    ttk.Label(title_frame, text=t("guide_title"), font=("Segoe UI", 14, "bold")).pack(anchor="w")
+    ttk.Label(title_frame, text=t("guide_title"), font=(font_family, 14, "bold")).pack(anchor="w")
     
     content_frame = ttk.Frame(guide_window)
     content_frame.pack(fill="both", expand=True, padx=15, pady=10)
@@ -59,9 +60,10 @@ def show_program_details(parent):
     except Exception:
         pass
     
+    font_family = getattr(parent, "font_family", "Segoe UI")
     title_frame = ttk.Frame(details_window)
     title_frame.pack(fill="x", padx=15, pady=(15, 5))
-    ttk.Label(title_frame, text=t("program_details_title"), font=("Segoe UI", 14, "bold")).pack(anchor="w")
+    ttk.Label(title_frame, text=t("program_details_title"), font=(font_family, 14, "bold")).pack(anchor="w")
     
     content_frame = ttk.Frame(details_window)
     content_frame.pack(fill="both", expand=True, padx=15, pady=10)

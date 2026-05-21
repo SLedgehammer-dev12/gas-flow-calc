@@ -30,13 +30,19 @@ def solve_cubic(a2, a1, a0):
     discriminant = (q / 2.0) ** 2 + (p / 3.0) ** 3
     three = 3.0
     offset = a2 / three
+
+    def _cube_root(val):
+        if val < 0:
+            return -((-val) ** (1.0 / 3.0))
+        return val ** (1.0 / 3.0)
+
     if discriminant > 0:
-        u = (-q / 2.0 + math.sqrt(discriminant)) ** (1.0 / three)
-        v = (-q / 2.0 - math.sqrt(discriminant)) ** (1.0 / three)
+        u = _cube_root(-q / 2.0 + math.sqrt(discriminant))
+        v = _cube_root(-q / 2.0 - math.sqrt(discriminant))
         r0 = u + v - offset
         return [r0, r0, r0]
     elif discriminant == 0:
-        u = (-q / 2.0) ** (1.0 / three)
+        u = _cube_root(-q / 2.0)
         r0 = 2.0 * u - offset
         r1 = -u - offset
         return [r0, r1, r1]
@@ -233,7 +239,7 @@ class GasFlowCalculator:
         if Re <= 0:
             self.log(f"Churchill: Gecersiz Reynolds sayisi ({Re}).", level="WARNING")
             return 0.02
-        A = (2.457 * math.log(1.0 / ((relative_roughness / 3.7) ** 1.11 + (relative_roughness / 0.27 * (relative_roughness / 37530.0 + 1.0) ** (16 / 12.0)) ** (12.0 / 16.0)))) ** 16
+        A = (2.457 * math.log(1.0 / ((7.0 / Re) ** 0.9 + 0.27 * relative_roughness))) ** 16
         B = (37530.0 / Re) ** 16
         f_churchill = 8.0 * ((8.0 / Re) ** 12.0 + 1.0 / (A + B) ** 1.5) ** (1.0 / 12.0)
         return f_churchill
@@ -1500,6 +1506,9 @@ class GasFlowCalculator:
             "gas_props_in": gas_props_in,
             "phase_info": phase_info,
             "flow_mode": flow_mode,
+            "velocity_in": velocity_in,
+            "velocity_out": velocity_in,
+            "P_out": P_in,
         }
 
         if L_max > 0:
@@ -1516,6 +1525,10 @@ class GasFlowCalculator:
             result["delta_p_pipe"] = final_profile.get("delta_p_pipe", delta_p_pipe)
             result["delta_p_fittings"] = final_profile.get("delta_p_fittings", delta_p_fittings)
             result["delta_p_acceleration"] = final_profile.get("delta_p_acceleration", delta_p_acceleration)
+            result["velocity_in"] = final_profile.get("velocity_in", velocity_in)
+            result["velocity_out"] = final_profile.get("velocity_out", velocity_in)
+            result["P_out"] = final_profile.get("P_out", P_out_target)
+            result["f"] = final_profile.get("f", f_final)
         else:
             result["gas_props_out"] = gas_props_in
 

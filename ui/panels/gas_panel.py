@@ -89,13 +89,13 @@ class GasPanel(ttk.LabelFrame):
         ttk.Label(bottom, text=t("gas_total") + ":").pack(side="left")
         self.app.gas_total_label = tk.Label(
             bottom, text="0.00 %",
-            font=("Segoe UI", 10, "bold"),
+            font=(self.app.font_family, 10, "bold"),
             bg="#ffffff", fg="#78909c")
         self.app.gas_total_label.pack(side="left", padx=(4, 2))
 
         self.app.gas_status_label = tk.Label(
             bottom, text="",
-            font=("Segoe UI", 10),
+            font=(self.app.font_family, 10),
             bg="#ffffff", fg="#78909c")
         self.app.gas_status_label.pack(side="left", padx=2)
 

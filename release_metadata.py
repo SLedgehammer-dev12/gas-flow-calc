@@ -1,8 +1,34 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.3.0"
+APP_VERSION = "6.4.0"
 
 
 RELEASE_NOTES = {
+    "6.4.0": {
+        "tr": """6.4.0 ile gelen baslica yenilikler:
+
+ARAYUZ & DENEYIM:
+- Premium Dinamik Temalar: Tam entegre acik, koyu ve yuksek kontrastli renk paletleri ve modern mikro-animasyonlar eklendi.
+- Gercek Zamanli Girdi Dogrulama (ValidatedEntry): Veri girerken anlik geri bildirim saglayan, ekrani kasmayan debounced girdi dogrulama altyapisi kuruldu.
+- Dinamik Akis Semasi: Pencere boyutuna veya veri degisimine gore kendini anlik olarak yeniden cizen interaktif TK canvas akis semasi yeniden tasarlandi.
+- Tercume Edilmis Matplotlib Grafikleri: Basinc kaybi, hiz ve faz profili grafikleri dil secimine (TR/EN) ve aktif temaya uyumlu hale getirildi.
+- Otomatik Cap Secim Kilit Senkronizasyonu: Minimum Cap secildiginde boru geometri alanlari otomatik kilitlenir; hesaplama bittiginde secilen standart boru bilgileri bu alanlara otomatik doldurulur.
+
+TEST ALTYAPISI:
+- Toplam test sayisi 132'ye (+37 yeni test) cikarildi.
+- Tema gecisleri, anlik girdi renk kontroleri, kilit mekanizmalari ve updater hata kurtarma (rollback) surecleri test kapsamına alindi.""",
+        "en": """Highlights introduced in 6.4.0:
+
+UI & UX:
+- Premium Dynamic Themes: Fully integrated light, dark, and high contrast color themes with rich harmonized HSL palettes and micro-animations.
+- Real-time Input Validation (ValidatedEntry): Real-time input checking with warning highlights and icons, powered by a non-blocking debounced design.
+- Dynamic Flow Schematic: Completely rebuilt interactive TK canvas flow schematic that automatically redraws on panel resizing and inputs change.
+- Translated Matplotlib Charts: Graphs (pressure drop, velocity, phase profiles) now dynamically translate labels, grids, and legend texts to match the active language and active theme styles.
+- Minimum Diameter Selection Lock Sync: In Minimum Diameter mode, pipe geometry inputs are locked automatically; once calculations finish, the recommended pipe standard data is automatically populated into the locked fields.
+
+TESTING INFRASTRUCTURE:
+- Expanded regression and component test coverage to 132 tests (+37 new tests).
+- Added test suites for dynamic theme persistence, real-time field validation colors, locked state UI behaviors, automatic input synchronization, and updater error rollbacks."""
+    },
     "6.1.0": {
         "tr": """6.1.0 ile gelen baslica yenilikler:
 

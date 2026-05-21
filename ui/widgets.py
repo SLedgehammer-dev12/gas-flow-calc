@@ -146,6 +146,7 @@ class ValidatedEntry(ttk.Entry):
         self.error_tooltip = None
         self.error_message = ""
         self.is_valid = True
+        self._debounce_id = None
         
         # Orijinal arka plan rengini sakla
         self._original_bg = self.cget('background') if self.cget('background') else 'white'
@@ -156,23 +157,73 @@ class ValidatedEntry(ttk.Entry):
         self.bind('<FocusIn>', self._on_focus_in)
         self.bind('<Leave>', self._hide_error_tooltip)
         
+    def _resolve_theme_colors(self):
+        """Aktif temaya göre renk paletini çözer."""
+        app = self.winfo_toplevel()
+        theme = getattr(app, "current_theme", "light")
+        theme_colors = getattr(app, '_colors', {
+            "bg": "#f0f3f8", "card": "#ffffff", "accent": "#1a237e", "accent2": "#283593",
+            "accent_light": "#e8eaf6", "txt_dark": "#1c2032", "txt_mid": "#455a64",
+            "txt_light": "#78909c", "success": "#2e7d32", "warn": "#e65100", "err": "#c62828",
+            "entry_bg": "white", "entry_fg": "black"
+        })
+        
+        # Hata renkleri
+        if theme == "dark":
+            err_bg = "#4c1c1c"
+            err_fg = "#ff8a80"
+            normal_bg = theme_colors.get("entry_bg", "#1e1e24")
+            normal_fg = theme_colors.get("entry_fg", "#e2e2e9")
+        elif theme == "contrast":
+            err_bg = "#ff0000"
+            err_fg = "#ffffff"
+            normal_bg = theme_colors.get("entry_bg", "#000000")
+            normal_fg = theme_colors.get("entry_fg", "#ffffff")
+        else:
+            err_bg = "#ffe6e6"
+            err_fg = "#c62828"
+            normal_bg = theme_colors.get("entry_bg", "white")
+            normal_fg = theme_colors.get("entry_fg", "black")
+            
+        return normal_bg, normal_fg, err_bg, err_fg
+
     def _on_key_release(self, event=None):
+        # Debounce timer'ını sıfırla
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+            self._debounce_id = None
+            
+        # Doğrulamayı hemen çalıştır ve rengi güncelle
         self._validate_input()
         
+        # Eğer hatalıysa ve odağa sahipse, 800ms sonra tooltip göster
+        if not self.is_valid and self.focus_get() == self:
+            self._debounce_id = self.after(800, self._show_error_tooltip)
+        
     def _on_focus_out(self, event=None):
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+            self._debounce_id = None
+            
         self._normalize_and_validate()
         self._hide_error_tooltip()
         
     def _on_focus_in(self, event=None):
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+            self._debounce_id = None
+            
         if not self.is_valid:
-            self._show_error_tooltip()
+            # 800ms bekleyip göster
+            self._debounce_id = self.after(800, self._show_error_tooltip)
     
     def _normalize_and_validate(self):
         current = self.get()
         normalized = ValidationHelper.normalize_number(current)
         if normalized != current:
             try:
-                float(normalized)
+                if normalized:
+                    float(normalized)
                 state = self.cget('state')
                 self.config(state='normal')
                 self.delete(0, tk.END)
@@ -239,13 +290,14 @@ class ValidatedEntry(ttk.Entry):
         return True
     
     def _set_error_style(self):
-        self.config(background=ValidationHelper.ERROR_BG, foreground=ValidationHelper.ERROR_FG)
-        self._show_error_tooltip()
+        normal_bg, normal_fg, err_bg, err_fg = self._resolve_theme_colors()
+        self.config(background=err_bg, foreground=err_fg)
         if self.error_callback:
             self.error_callback(self, self.error_message)
     
     def _set_normal_style(self):
-        self.config(background=ValidationHelper.NORMAL_BG, foreground=ValidationHelper.NORMAL_FG)
+        normal_bg, normal_fg, err_bg, err_fg = self._resolve_theme_colors()
+        self.config(background=normal_bg, foreground=normal_fg)
         self._hide_error_tooltip()
         if self.error_callback:
             self.error_callback(self, None)
@@ -253,6 +305,7 @@ class ValidatedEntry(ttk.Entry):
     def _show_error_tooltip(self, event=None):
         if not self.error_message: return
         if self.error_tooltip: return
+        if self.focus_get() != self: return
         
         x = self.winfo_rootx()
         y = self.winfo_rooty() + self.winfo_height() + 2
@@ -261,15 +314,42 @@ class ValidatedEntry(ttk.Entry):
         self.error_tooltip.wm_overrideredirect(True)
         self.error_tooltip.wm_geometry(f"+{x}+{y}")
         
+        try:
+            self.error_tooltip.wm_transient(self.winfo_toplevel())
+        except Exception:
+            pass
+        
+        app = self.winfo_toplevel()
+        font_family = getattr(app, "font_family", "Segoe UI")
+        theme = getattr(app, "current_theme", "light")
+        
+        if theme == "dark":
+            tooltip_bg = "#4c1c1c"
+            tooltip_fg = "#ff8a80"
+            tooltip_border = "#c62828"
+        elif theme == "contrast":
+            tooltip_bg = "#000000"
+            tooltip_fg = "#ffffff"
+            tooltip_border = "#ffffff"
+        else:
+            tooltip_bg = "#ffcdd2"
+            tooltip_fg = "#b71c1c"
+            tooltip_border = "#b71c1c"
+            
         label = tk.Label(
             self.error_tooltip, 
             text=f"⚠ {self.error_message}",
-            background="#ffcdd2", foreground="#b71c1c",
-            font=("Segoe UI", 9), padx=8, pady=4, relief="solid", borderwidth=1
+            background=tooltip_bg, foreground=tooltip_fg,
+            font=(font_family, 9), padx=8, pady=4, relief="solid", borderwidth=1,
+            highlightbackground=tooltip_border
         )
         label.pack()
     
     def _hide_error_tooltip(self, event=None):
+        if self._debounce_id:
+            self.after_cancel(self._debounce_id)
+            self._debounce_id = None
+            
         if self.error_tooltip:
             self.error_tooltip.destroy()
             self.error_tooltip = None
