@@ -1,3 +1,5 @@
 CoolProp
-numpy
 Pillow
+pytest
+pytest-cov
+pytest-mock

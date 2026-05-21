@@ -54,6 +54,63 @@ class TestCoolPropCompatibility(unittest.TestCase):
         self.assertTrue(math.isfinite(result["velocity_in"]))
         self.assertLess(result["velocity_in"], 10)
 
+    def test_cryogenic_pt_flash_uses_envelope_phase_fallback(self):
+        phase = self.calc.detect_phase(
+            113993.3329,
+            113.15,
+            {"METHANE": 0.95, "ETHANE": 0.03, "NITROGEN": 0.02},
+        )
+        props = self.calc.calculate_thermo_properties(
+            113993.3329,
+            113.15,
+            {"METHANE": 0.95, "ETHANE": 0.03, "NITROGEN": 0.02},
+            "CoolProp (High Accuracy EOS)",
+            state=self.calc.create_coolprop_state({"METHANE": 0.95, "ETHANE": 0.03, "NITROGEN": 0.02}),
+        )
+        self.assertEqual(phase["phase"], "two_phase")
+        self.assertEqual(phase.get("phase_detection_source"), "envelope")
+        self.assertGreater(props["density"], 0)
+        self.assertTrue(math.isfinite(props["density"]))
+
+    def test_cryogenic_solid_risk_point_falls_back_without_crashing(self):
+        phase = self.calc.detect_phase(
+            801325.0,
+            108.15,
+            {
+                "METHANE": 0.80,
+                "ETHANE": 0.10,
+                "PROPANE": 0.05,
+                "BUTANE": 0.03,
+                "CARBONDIOXIDE": 0.02,
+            },
+        )
+        props = self.calc.calculate_thermo_properties(
+            801325.0,
+            108.15,
+            {
+                "METHANE": 0.80,
+                "ETHANE": 0.10,
+                "PROPANE": 0.05,
+                "BUTANE": 0.03,
+                "CARBONDIOXIDE": 0.02,
+            },
+            "CoolProp (High Accuracy EOS)",
+            state=self.calc.create_coolprop_state(
+                {
+                    "METHANE": 0.80,
+                    "ETHANE": 0.10,
+                    "PROPANE": 0.05,
+                    "BUTANE": 0.03,
+                    "CARBONDIOXIDE": 0.02,
+                }
+            ),
+        )
+        self.assertEqual(phase["phase"], "liquid")
+        self.assertEqual(phase["warning_level"], "critical")
+        self.assertIn("kati", phase["warning_msg_tr"].lower())
+        self.assertGreater(props["density"], 0)
+        self.assertTrue(math.isfinite(props["density"]))
+
 
 if __name__ == "__main__":
     unittest.main()

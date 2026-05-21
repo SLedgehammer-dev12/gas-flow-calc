@@ -1,0 +1,58 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "username": "Gas Flow Calc Team",
+  "model": "deepseek-v4-pro",
+  "default_agent": "calc-agent",
+  "instructions": [
+    "AGENTS.md",
+    "README.md"
+  ],
+  "skills": {
+    "paths": [".opencode/skills"]
+  },
+  "agent": {
+    "ux-agent": {
+      "description": "User Experience and Visual Guidance specialist. Owns main.py, ui/ panels, translations.py, ui/schematic.py, and UI styling. Focuses on visual excellence, responsive layouts, immediate user-facing validation errors, tooltips, localized strings, and calculation progress visibility.",
+      "mode": "subagent",
+      "model": "deepseek-v4-pro"
+    },
+    "security-agent": {
+      "description": "Security and Stability Specialist. Owns auth.py, updater.py, app_paths.py, calculations.py (locking mechanisms), and test_auth.py. Focuses on cryptographically securing credentials (DPAPI), validating secure downloads (SHA256, HTTPS), avoiding path traversals, thread-safe cache synchronizations, and bulletproofing error boundaries.",
+      "mode": "subagent",
+      "model": "deepseek-v4-pro"
+    },
+    "calc-agent": {
+      "description": "Calculation engine specialist. Owns calculations.py, data.py, constants.py, flow_utils.py, target_utils.py. Use for thermodynamics, friction, EOS, pressure drop, max length, min diameter.",
+      "mode": "subagent",
+      "model": "deepseek-v4-pro"
+    },
+    "ui-agent": {
+      "description": "UI and presentation specialist. Owns main.py, ui/, translations.py. Use for Tkinter widgets, layouts, event handling, results display.",
+      "mode": "subagent",
+      "model": "deepseek-v4-pro"
+    },
+    "qa-agent": {
+      "description": "Quality assurance specialist. Owns test files. Use for running tests, debugging failures, writing new tests, verifying edge cases.",
+      "mode": "subagent",
+      "model": "deepseek-v4-pro"
+    },
+    "release-agent": {
+      "description": "Release management specialist. Owns release_metadata.py, CHANGELOG.md, PyInstaller spec. Use for version bumps, release notes, packaging.",
+      "mode": "subagent",
+      "model": "deepseek-v4-pro"
+    }
+  },
+  "permission": {
+    "edit": "allow",
+    "bash": {
+      "git *": "ask",
+      "rm *": "ask",
+      "pip install *": "ask",
+      "*": "allow"
+    },
+    "external_directory": {
+      "D:\\İş\\Çalışan programlar\\@Güncelleme\\Gas Flow Calc\\**": "allow",
+      "*": "ask"
+    }
+  }
+}

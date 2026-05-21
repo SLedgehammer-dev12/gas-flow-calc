@@ -1,0 +1,83 @@
+name: Build and Release Windows Executable
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows Exe
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller pyaga8 pywin32 CoolProp Pillow
+
+      - name: Verify installed modules
+        run: |
+          python -c "import CoolProp; print('CoolProp OK'); import pyaga8; print('pyaga8 OK'); import PIL; print('Pillow OK')"
+
+      - name: Build standalone executable with PyInstaller
+        run: |
+          pyinstaller "Gas Flow Calc V6.1.spec" --clean
+
+      - name: Calculate and print SHA256 checksum
+        shell: bash
+        run: |
+          EXE_FILE=$(find dist Releases -name "*.exe" 2>/dev/null | head -n 1)
+          if [ -f "$EXE_FILE" ]; then
+            echo "------------------------------------------------"
+            echo "Calculating SHA256 checksum for $EXE_FILE:"
+            sha256sum "$EXE_FILE"
+            echo "------------------------------------------------"
+          else
+            echo "Error: Built executable not found!"
+            exit 1
+          fi
+
+      - name: Upload executable to GitHub Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Locate built executable
+          EXE_FILE=$(find dist Releases -name "*.exe" 2>/dev/null | head -n 1)
+          if [ -z "$EXE_FILE" ]; then
+            echo "Error: No compiled executable found!"
+            exit 1
+          fi
+          
+          # Resolve target release tag
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.4.0")
+          fi
+          
+          echo "Target Release Tag: $TAG_NAME"
+          echo "Target Executable: $EXE_FILE"
+          
+          # Upload via GitHub CLI
+          gh release upload "$TAG_NAME" "$EXE_FILE" --clobber

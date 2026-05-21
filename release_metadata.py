@@ -1,8 +1,34 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.1.11"
+APP_VERSION = "6.4.0"
 
 
 RELEASE_NOTES = {
+    "6.4.0": {
+        "tr": """6.4.0 ile gelen baslica yenilikler:
+
+ARAYUZ & DENEYIM:
+- Premium Dinamik Temalar: Tam entegre acik, koyu ve yuksek kontrastli renk paletleri ve modern mikro-animasyonlar eklendi.
+- Gercek Zamanli Girdi Dogrulama (ValidatedEntry): Veri girerken anlik geri bildirim saglayan, ekrani kasmayan debounced girdi dogrulama altyapisi kuruldu.
+- Dinamik Akis Semasi: Pencere boyutuna veya veri degisimine gore kendini anlik olarak yeniden cizen interaktif TK canvas akis semasi yeniden tasarlandi.
+- Tercume Edilmis Matplotlib Grafikleri: Basinc kaybi, hiz ve faz profili grafikleri dil secimine (TR/EN) ve aktif temaya uyumlu hale getirildi.
+- Otomatik Cap Secim Kilit Senkronizasyonu: Minimum Cap secildiginde boru geometri alanlari otomatik kilitlenir; hesaplama bittiginde secilen standart boru bilgileri bu alanlara otomatik doldurulur.
+
+TEST ALTYAPISI:
+- Toplam test sayisi 132'ye (+37 yeni test) cikarildi.
+- Tema gecisleri, anlik girdi renk kontroleri, kilit mekanizmalari ve updater hata kurtarma (rollback) surecleri test kapsamına alindi.""",
+        "en": """Highlights introduced in 6.4.0:
+
+UI & UX:
+- Premium Dynamic Themes: Fully integrated light, dark, and high contrast color themes with rich harmonized HSL palettes and micro-animations.
+- Real-time Input Validation (ValidatedEntry): Real-time input checking with warning highlights and icons, powered by a non-blocking debounced design.
+- Dynamic Flow Schematic: Completely rebuilt interactive TK canvas flow schematic that automatically redraws on panel resizing and inputs change.
+- Translated Matplotlib Charts: Graphs (pressure drop, velocity, phase profiles) now dynamically translate labels, grids, and legend texts to match the active language and active theme styles.
+- Minimum Diameter Selection Lock Sync: In Minimum Diameter mode, pipe geometry inputs are locked automatically; once calculations finish, the recommended pipe standard data is automatically populated into the locked fields.
+
+TESTING INFRASTRUCTURE:
+- Expanded regression and component test coverage to 132 tests (+37 new tests).
+- Added test suites for dynamic theme persistence, real-time field validation colors, locked state UI behaviors, automatic input synchronization, and updater error rollbacks."""
+    },
     "6.1.0": {
         "tr": """6.1.0 ile gelen baslica yenilikler:
 
@@ -161,6 +187,140 @@ RELEASE_NOTES = {
 - The process-conditions section was rearranged into a more compact grid so labels, inputs, and unit selectors stay visually closer together.
 - Additional UI regression tests were added.""",
     },
+    "6.1.12": {
+        "tr": """6.1.12 ile gelen baslica yenilikler:
+
+- Arayuz olay islemleri main.py'den ayrilarak yeni GasFlowController katmanina tasindi.
+- Degisken okumalarindaki \"Â°C\" gibi encoding sorunlari giderildi.
+- CoolProp exception yakalama kapsami daraltilarak sessiz termodinamik hatalarin onune gecildi.
+- Sonik hiz hesaplamalarina ideal gaz fallback mantigi eklendi.
+- Arka uca tum hesaplama operasyonlari (calculations.py) icin test kapsami eklendi.""",
+        "en": """Highlights introduced in 6.1.12:
+
+- UI event processing was decoupled from main.py and moved to a new GasFlowController layer.
+- Unicode decoding issues like \"Â°C\" during variable reading were resolved.
+- CoolProp exception catching was restricted to prevent silent thermodynamic calculation failures.
+- Ideal gas fallback logic was added for sonic velocity calculations.
+- Backend test coverage was expanded with new comprehensive test routines."""
+    },
+    "6.1.13": {
+        "tr": """6.1.13 ile gelen baslica yenilikler:
+
+- Minimum Cap hedef modunda uzunluk girisinin baslangicta gizli kalmasina neden olan UI mantik hatasi giderildi.
+- Minimum Cap hedefi icin uretilen alternatif boru secenekleri ozet tablosuna artik gaz cikis hizlari da eklendi.""",
+        "en": """Highlights introduced in 6.1.13:
+
+- Fixed the UI logic bug that caused the length input to remain hidden at startup in Minimum Diameter mode.
+- The summary table for alternative pipe options in the Minimum Diameter target now displays gas exit velocities."""
+    },
+    "6.2.0": {
+        "tr": """6.2.0 ile gelen baslica yenilikler:
+
+- Faz duyarlı akış motoru eklendi; segment bazında gaz, sivi ve iki faz bolgeleri izleniyor ve raporlanıyor.
+- Sivi tek-faz hesabı Darcy-Weisbach tabanı uzerinde Churchill surtunme faktoru ve yogunluk degisimine bagli ivmelenme terimi ile iyilestirildi.
+- Faz flash cozumunun zorlandigi kriyojenik ve metastabil noktalarda CoolProp envelope fallback mantigi eklendi; ham hata mesajlari yerine anlamli faz uyarlari uretiliyor.
+- Detay rapora girilen kompozisyon ile giris/cikis PT noktalarindaki yogunluk, molekuler agirlik, Z, Cp, Cv, viskozite ve ses hizi gibi ozellikler eklendi.
+- Akis tipi secimi Turkce/Ingilterce etiketlerden bagimsiz hale getirildi; guncelleyici ve paketleme zinciri SSL/runtime sorunlarina karsi sertlestirildi.""",
+        "en": """Highlights introduced in 6.2.0:
+
+- Added a phase-aware flow engine that tracks and reports gas, liquid, and two-phase regions segment by segment.
+- Improved the single-phase liquid calculation with a Darcy-Weisbach base plus Churchill friction factor and a density-change acceleration term.
+- Added CoolProp envelope fallbacks for cryogenic and metastable points so users get meaningful phase diagnostics instead of raw flash errors.
+- Extended the detailed report with input composition plus inlet/outlet PT properties such as density, molecular weight, Z, Cp, Cv, viscosity, and speed of sound.
+- Hardened flow-mode normalization across Turkish/English labels and improved updater/packaging resilience against SSL/runtime issues."""
+    },
+    "6.2.1": {
+        "tr": """6.2.1 ile gelen baslica yenilikler:
+
+- Kurumsal antivirüs (Windows Defender vb.) yazilimlarinin yanlis pozitif (false-positive) uyarilarini engellemek amaciyla paketleme ayarlarina exe versiyon ve yayinci bilgileri (metadata) eklendi.""",
+        "en": """Highlights introduced in 6.2.1:
+
+- Executable version and publisher metadata were added to the packaging build to prevent false-positive detections by corporate antivirus software (e.g., Windows Defender)."""
+    },
+    "6.3.0": {
+        "tr": """6.3.0 ile gelen baslica yenilikler:
+
+GUVENLIK:
+- Admin sifre dogrulamasina brute-force korumasi eklendi (5 hatali deneme → 30 sn bekleme).
+- GitHub token artik Windows DPAPI ile sifrelenerek saklaniyor, XOR gizlemesi kaldirildi.
+- Indirilen guncelleme dosyalari SHA-256 hash karsilastirmasi ile dogrulaniyor.
+- Release body icinde SHA256: <hash> formati destekleniyor.
+
+PERFORMANS:
+- Termodinamik cache akilli hale getirildi: gaz bilesimi degismedikce temizlenmiyor, cache hit orani artti.
+- Uclu nokta sicakliklari (TTRIPLE) cache'lendi; faz tespiti sirasinda gereksiz CoolProp cagrilari azaltildi.
+- Cache key hassasiyeti optimize edildi (100 Pa / 0.01 K).
+- Colebrook iteratif surtunme faktoru Churchill explicit denklemi ile degistirildi.
+- numpy bagimliligi tamamen kaldirildi; cubik EOS kok bulma Cardano kapali cozum ile yapiliyor (~300ms daha hizli acilis).
+- DAK Newton-Raphson iterasyon sayisi 50→20, erken cikis eklendi.
+
+MIMARI:
+- GasFlowController (controllers.py) aktiflestirildi; start_calculation artik controller uzerinden veri topluyor.
+- patch_main.py silindi; olü kod temizlendi.
+- 10+ sessiz except Exception: pass blogu log'lu hale getirildi.
+- Giris parola dogrulamasi geri eklendi (root.withdraw/deiconify yontemiyle).
+- Min Cap alternatif secenekleri gosterme bug'i giderildi.
+
+YENI TERMODINAMIK MODEL:
+- AGA-8 GERG-2008 ve AGA-8 DETAIL modelleri eklendi (pyaga8 Rust kutuphanesi uzerinden).
+- AGA-8, dogal gaz custody transfer standardidir; Z-faktoru ve yogunlukta en yuksek dogrulugu saglar.
+- Viskozite Lee-Gonzalez-Eakin korelasyonu ile hesaplaniyor.
+- CoolProp'tan 5-10x daha hizli termodinamik hesaplama.
+
+KOD KALITESI:
+- constants.py olusturuldu; fiziksel sabitler, birim donusumleri ve yakinsama degerleri tek noktadan yonetiliyor.
+- Faz, formul ve uyari metinleri modul seviyesinde sabitlere cikarildi.
+- Kullanilmayan functools.lru_cache import'u kaldirildi.
+
+TEST:
+- 95 test (onceki 37 test + 50 yeni + 8 PYAGA8): format_utils, app_paths, controllers, auth brute-force, edge case'ler, PYAGA8.
+- pytest.ini, conftest.py eklendi; coverage altyapisi hazir.
+- .gitignore test_*.py deseni sadece kok dizinle sinirlandirildi (tests/ dizini etkilenmez).
+
+.opencode/:
+- 4 agent (calc, ui, qa, release) ve 2 skill (analyze, verify) dosyasi olusturuldu; opencode ile uyumlu calisiyor.""",
+        "en": """Highlights introduced in 6.3.0:
+
+SECURITY:
+- Brute-force protection added to admin password verification (5 failed attempts → 30 s lockout).
+- GitHub token now encrypted via Windows DPAPI; XOR obfuscation removed.
+- Downloaded update files are verified via SHA-256 hash comparison.
+- Release body SHA256: <hash> format is now supported.
+
+PERFORMANCE:
+- Smart thermo cache: cleared only when gas composition changes, significantly improving cache hit ratio.
+- Triple-point temperatures (TTRIPLE) are now cached, reducing redundant CoolProp calls during phase detection.
+- Cache key precision optimized (100 Pa / 0.01 K).
+- Iterative Colebrook friction factor replaced with explicit Churchill equation.
+- numpy dependency completely removed; cubic EOS root-finding now uses a closed-form Cardano solver (~300ms faster startup).
+- DAK Newton-Raphson iterations reduced 50→20 with early-exit.
+
+ARCHITECTURE:
+- GasFlowController (controllers.py) activated; start_calculation now collects data through the controller.
+- patch_main.py deleted; dead code removed.
+- 10+ silent except Exception: pass blocks are now properly logged.
+- Application login restored (root.withdraw/deiconify method).
+- Min Diameter alternatives display bug fixed.
+
+NEW THERMODYNAMIC MODELS:
+- AGA-8 GERG-2008 and AGA-8 DETAIL models added (via pyaga8 Rust library).
+- AGA-8 is the industry standard for natural gas custody transfer; provides highest Z-factor and density accuracy.
+- Viscosity computed via Lee-Gonzalez-Eakin correlation.
+- 5-10x faster thermodynamic calculation than CoolProp.
+
+CODE QUALITY:
+- constants.py created; physical constants, unit conversions, and convergence values centrally managed.
+- Phase, formula, and warning strings extracted to module-level constants.
+- Unused functools.lru_cache import removed.
+
+TESTING:
+- 95 tests (previously 37 + 50 new + 8 PYAGA8): format_utils, app_paths, controllers, auth brute-force, edge cases, PYAGA8.
+- pytest.ini, conftest.py added; coverage infrastructure ready.
+- .gitignore test_*.py pattern now limited to root directory (tests/ unaffected).
+
+.opencode/:
+- 4 agents (calc, ui, qa, release) and 2 skills (analyze, verify) created; compatible with opencode."""
+    }
 }
 
 

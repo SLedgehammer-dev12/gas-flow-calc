@@ -1,5 +1,22 @@
 # TODO
 
+## Session Handoff - 2026-04-11
+
+- Faz duyarlı altyapının ilk calisan versiyonu eklendi:
+  - `flow_utils.py` ile `flow_mode` normalize edildi.
+  - `target_utils.py` ile `calc_target_mode` normalize edildi.
+  - `calculations.py` icine `detect_phase`, iki faz property split, basit Lockhart-Martinelli segment kaybi, `phase_profile`, `transition_to_two_phase_m` eklendi.
+  - `controllers.py`, `reporting.py`, `main.py` faz bilgisi ve warning banner icin guncellendi.
+- Test durumu:
+  - `pytest -q` -> `28 passed`
+- Calisma agaci:
+  - degisen dosyalar: `calculations.py`, `controllers.py`, `main.py`, `reporting.py`
+  - yeni dosyalar: `flow_utils.py`, `target_utils.py`
+- Siradaki teknik adim:
+  - `calculate_max_length()` icindeki binary-search solver'ini ayri ortak segment solver uzerine tasiyip iki faz davranisini ic iterasyon seviyesinde de tutarli hale getir.
+  - Faz warning popup akisini ekle.
+  - Gerekirse `phase_profile` verisini CSV/export ve sema tarafina tasiyip gorsellestir.
+
 ## High Priority
 
 - `main.py` icindeki UI orkestrasyonunu daha kucuk modullere bol.
