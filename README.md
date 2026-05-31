@@ -1,4 +1,4 @@
-# Gas Flow Calc 6.1.8
+# Gas Flow Calc 6.6.0
 
 Windows tabanli bir Tkinter dogal gaz hesaplama uygulamasi.
 

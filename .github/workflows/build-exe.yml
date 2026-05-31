@@ -1,4 +1,4 @@
-name: Build and Release Windows Executable
+name: Build and Release (Windows + macOS)
 
 on:
   release:
@@ -12,10 +12,9 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build Windows Exe
+  build-windows:
+    name: Build Windows EXE
     runs-on: windows-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -25,59 +24,121 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13'
           cache: 'pip'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pyaga8 pywin32 CoolProp Pillow
+          pip install -r requirements.txt pyinstaller pyaga8 pywin32
 
-      - name: Verify installed modules
+      - name: Run test suite
         run: |
-          python -c "import CoolProp; print('CoolProp OK'); import pyaga8; print('pyaga8 OK'); import PIL; print('Pillow OK')"
+          python -m pytest tests/ -q --tb=short
 
       - name: Build standalone executable with PyInstaller
         run: |
-          pyinstaller "Gas Flow Calc V6.1.spec" --clean
+          pyinstaller "Gas Flow Calc V6.6 (Windows).spec" --clean
 
-      - name: Calculate and print SHA256 checksum
+      - name: Create source ZIP for in-app updates
         shell: bash
         run: |
-          EXE_FILE=$(find dist Releases -name "*.exe" 2>/dev/null | head -n 1)
+          git archive --format=zip --output=Gas_Flow_Calc_V6.6.0_source.zip HEAD
+
+      - name: Calculate SHA256 checksums
+        shell: bash
+        run: |
+          EXE_FILE=$(find dist -name "*.exe" -type f 2>/dev/null | head -n 1)
           if [ -f "$EXE_FILE" ]; then
-            echo "------------------------------------------------"
-            echo "Calculating SHA256 checksum for $EXE_FILE:"
-            sha256sum "$EXE_FILE"
-            echo "------------------------------------------------"
-          else
-            echo "Error: Built executable not found!"
-            exit 1
+            echo "SHA256_WIN_EXE=$(sha256sum "$EXE_FILE" | cut -d' ' -f1)" >> $GITHUB_ENV
+          fi
+          ZIP_FILE="Gas_Flow_Calc_V6.6.0_source.zip"
+          if [ -f "$ZIP_FILE" ]; then
+            echo "SHA256_WIN_ZIP=$(sha256sum "$ZIP_FILE" | cut -d' ' -f1)" >> $GITHUB_ENV
           fi
 
-      - name: Upload executable to GitHub Release
+      - name: Upload to GitHub Release
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Locate built executable
-          EXE_FILE=$(find dist Releases -name "*.exe" 2>/dev/null | head -n 1)
-          if [ -z "$EXE_FILE" ]; then
-            echo "Error: No compiled executable found!"
-            exit 1
-          fi
-          
-          # Resolve target release tag
+          EXE_FILE=$(find dist -name "*.exe" -type f 2>/dev/null | head -n 1)
+          ZIP_FILE="Gas_Flow_Calc_V6.6.0_source.zip"
+
+          TAG_NAME=""
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
           elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
             TAG_NAME="${{ github.event.release.tag_name }}"
           else
-            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.4.0")
+            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.6.0")
           fi
-          
-          echo "Target Release Tag: $TAG_NAME"
-          echo "Target Executable: $EXE_FILE"
-          
-          # Upload via GitHub CLI
-          gh release upload "$TAG_NAME" "$EXE_FILE" --clobber
+
+          ASSETS=""
+          [ -f "$EXE_FILE" ] && ASSETS="$EXE_FILE"
+          [ -f "$ZIP_FILE" ] && ASSETS="$ASSETS $ZIP_FILE"
+
+          if [ -n "$ASSETS" ]; then
+            gh release upload "$TAG_NAME" $ASSETS --clobber
+          fi
+
+  build-macos:
+    name: Build macOS DMG
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Run test suite
+        run: |
+          python -m pytest tests/ -q --tb=short
+
+      - name: Build standalone app bundle with PyInstaller
+        run: |
+          pyinstaller "Gas Flow Calc V6.6 (macOS).spec" --clean
+
+      - name: Create DMG
+        run: |
+          APP_PATH=$(find dist -name "*.app" -type d 2>/dev/null | head -n 1)
+          if [ -d "$APP_PATH" ]; then
+            hdiutil create -volname "Gas Flow Calc V6.6" \
+              -srcfolder "$APP_PATH" \
+              -ov -format UDZO "Gas_Flow_Calc_V6.6.0.dmg"
+          fi
+
+      - name: Calculate SHA256 checksum
+        run: |
+          if [ -f "Gas_Flow_Calc_V6.6.0.dmg" ]; then
+            echo "SHA256_MAC_DMG=$(shasum -a 256 Gas_Flow_Calc_V6.6.0.dmg | cut -d' ' -f1)" >> $GITHUB_ENV
+          fi
+
+      - name: Upload DMG to GitHub Release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME=""
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG_NAME="${GITHUB_REF#refs/tags/}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          else
+            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.6.0")
+          fi
+
+          if [ -f "Gas_Flow_Calc_V6.6.0.dmg" ]; then
+            gh release upload "$TAG_NAME" Gas_Flow_Calc_V6.6.0.dmg --clobber
+          fi

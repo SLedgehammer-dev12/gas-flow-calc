@@ -1,4 +1,6 @@
 from translations import t
+from theme_colors import resolve_colors
+
 
 def show_graphs(container, result, app=None):
     """Hesaplama sonuçları için grafikleri sağlanan container içine çizer."""
@@ -8,49 +10,36 @@ def show_graphs(container, result, app=None):
         import matplotlib.pyplot as plt
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     except ImportError:
-        # matplotlib yoksa sessizce geç veya konsola yaz, sonuçta arayüzün ana parçası değil.
         return
 
     data = result.get('profile_data')
     if not data or len(data.get('distance', [])) == 0:
-        # Eğer profil verisi yoksa container'ı temizle
         for widget in container.winfo_children():
             widget.destroy()
         return
 
-    # Eski grafikleri temizle
     for widget in container.winfo_children():
         widget.destroy()
 
-    # Aktif tema renklerini çöz
-    if app:
-        theme = getattr(app, "current_theme", "light")
-        theme_colors = getattr(app, '_colors', {})
-    else:
-        theme = "light"
-        theme_colors = {}
+    theme = getattr(app, "current_theme", "light") if app else "light"
+    colors = resolve_colors(theme)
 
     if theme == "dark":
-        bg_color = theme_colors.get("bg", "#121214")
-        card_color = theme_colors.get("card", "#1e1e24")
-        text_color = theme_colors.get("txt_dark", "#e2e2e9")
         grid_color = "#2c2c38"
-        line1_color = theme_colors.get("accent", "#8c9eff")
-        line2_color = theme_colors.get("accent2", "#b388ff")
+        line1_color = colors["accent"]
+        line2_color = colors.get("accent2", "#b388ff")
     elif theme == "contrast":
-        bg_color = theme_colors.get("bg", "#000000")
-        card_color = theme_colors.get("card", "#000000")
-        text_color = theme_colors.get("txt_dark", "#ffffff")
         grid_color = "#ffffff"
-        line1_color = "#ffff00"  # Sarı
-        line2_color = "#00ffff"  # Turkuaz
-    else:  # light
-        bg_color = theme_colors.get("bg", "#f0f3f8")
-        card_color = theme_colors.get("card", "#ffffff")
-        text_color = theme_colors.get("txt_dark", "#1c2032")
+        line1_color = "#ffff00"
+        line2_color = "#00ffff"
+    else:
         grid_color = "#e0e0e0"
         line1_color = "blue"
         line2_color = "red"
+
+    card_color = colors["card_bg"]
+    bg_color = colors["bg"]
+    text_color = colors["txt_dark"]
 
     # Figür oluştur
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 5), sharex=True)

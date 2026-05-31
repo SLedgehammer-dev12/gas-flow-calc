@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
+import base64
 from datetime import datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -102,6 +103,42 @@ except ImportError:
 
 TOKEN_OBFUSCATION_KEY = 0xA3
 
+_FERNET_KEY = None
+
+
+def _get_machine_seed() -> bytes:
+    host = os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME", "unknown")
+    user = os.environ.get("USER", os.environ.get("USERNAME", "unknown"))
+    return f"{host}::{user}::GasFlowCalc".encode("utf-8")
+
+
+def _get_fernet_key() -> bytes | None:
+    global _FERNET_KEY
+    if _FERNET_KEY is not None:
+        return _FERNET_KEY
+    if _DPAPI_AVAILABLE:
+        return None
+    try:
+        from cryptography.fernet import Fernet
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+        seed = _get_machine_seed()
+        kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=b"GasFlowCalc-Fernet-v1", iterations=200_000)
+        key = base64.urlsafe_b64encode(kdf.derive(seed))
+        _FERNET_KEY = key
+        return key
+    except Exception:
+        return None
+
+
+def _is_xor_encrypted(data: str) -> bool:
+    try:
+        raw = bytes.fromhex(data)
+        return len(raw) > 0 and raw[0] ^ 0xA3 < 128
+    except Exception:
+        return False
+
 
 def _obfuscate_token(token: str) -> str:
     if not token:
@@ -114,6 +151,14 @@ def _obfuscate_token(token: str) -> str:
                 None, None, None, 0,
             )
             return blob.hex()
+        except Exception:
+            pass
+    fernet_key = _get_fernet_key()
+    if fernet_key is not None:
+        try:
+            from cryptography.fernet import Fernet
+            f = Fernet(fernet_key)
+            return f.encrypt(token.encode("utf-8")).decode("utf-8")
         except Exception:
             pass
     encoded = token.encode("utf-8")
@@ -131,6 +176,25 @@ def _deobfuscate_token(obfuscated: str) -> str:
             return desc[1].decode("utf-8")
         except Exception:
             pass
+    fernet_key = _get_fernet_key()
+    if fernet_key is not None:
+        try:
+            from cryptography.fernet import InvalidToken
+            try:
+                from cryptography.fernet import Fernet
+                f = Fernet(fernet_key)
+                return f.decrypt(obfuscated.encode("utf-8")).decode("utf-8")
+            except (InvalidToken, Exception):
+                pass
+        except Exception:
+            pass
+    try:
+        obf = bytes.fromhex(obfuscated)
+        if _is_xor_encrypted(obfuscated):
+            deobf = bytes(b ^ TOKEN_OBFUSCATION_KEY for b in obf)
+            return deobf.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        pass
     try:
         obf = bytes.fromhex(obfuscated)
         deobf = bytes(b ^ TOKEN_OBFUSCATION_KEY for b in obf)

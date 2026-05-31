@@ -3,7 +3,7 @@ import sys
 import tempfile
 import pytest
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
 @pytest.fixture
@@ -23,6 +23,35 @@ def common_inputs():
         flow_unit="Sm3/h",
         D_inner=100,
         L=5000,
+        roughness=4.57e-5,
+        total_k=2.5,
+        flow_property="Compressible",
+        flow_mode="compressible",
+        target="pressure_drop",
+        P_out_target=0,
+        max_velocity=20,
+        optimize_weight=False,
+        fast_calculation=False,
+        P_design=0,
+        material="API 5L Grade B",
+        SMYS=0,
+        F=0.72,
+        E=1.0,
+        T_factor=1.0,
+    )
+
+
+@pytest.fixture
+def high_pressure_inputs():
+    return dict(
+        P_in=(80 + 1.01325) * 1e5,
+        T=60 + 273.15,
+        mole_fractions={"METHANE": 0.90, "ETHANE": 0.06, "PROPANE": 0.03, "NITROGEN": 0.01},
+        library_choice="CoolProp (High Accuracy EOS)",
+        flow_rate=50000,
+        flow_unit="Sm3/h",
+        D_inner=150,
+        L=10000,
         roughness=4.57e-5,
         total_k=2.5,
         flow_property="Compressible",

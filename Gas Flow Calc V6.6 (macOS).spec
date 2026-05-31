@@ -1,25 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
+# PyInstaller spec for macOS — .app bundle
 
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(SPEC)))
 
-from release_metadata import get_versioned_exe_stem
+from release_metadata import APP_NAME, APP_VERSION
 
 
-APP_EXE_STEM = get_versioned_exe_stem()
-PYTHON_DLLS_DIR = os.path.join(sys.base_prefix, "DLLs")
-SSL_RUNTIME_BINARIES = []
-for dll_name in ("_ssl.pyd", "libssl-3.dll", "libcrypto-3.dll"):
-    dll_path = os.path.join(PYTHON_DLLS_DIR, dll_name)
-    if os.path.isfile(dll_path):
-        SSL_RUNTIME_BINARIES.append((dll_path, "."))
+APP_BUNDLE_NAME = f"{APP_NAME} V{APP_VERSION}"
 
 a = Analysis(
     ['main.py'],
     pathex=[],
-    binaries=SSL_RUNTIME_BINARIES,
+    binaries=[],
     datas=[],
     hiddenimports=[
         'unicodedata',
@@ -28,7 +23,7 @@ a = Analysis(
         'matplotlib.backends.backend_tkagg',
         'matplotlib.backends._backend_tk',
         'pyaga8',
-        'win32crypt',
+        'cryptography',
     ],
     hookspath=[],
     hooksconfig={},
@@ -45,7 +40,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name=APP_EXE_STEM,
+    name=APP_BUNDLE_NAME,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -58,5 +53,15 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    version='version_info.txt',
+)
+
+app = BUNDLE(
+    exe,
+    a.binaries,
+    a.datas,
+    [],
+    name=APP_BUNDLE_NAME + ".app",
+    icon=None,
+    display_name=APP_NAME,
+    version=APP_VERSION,
 )

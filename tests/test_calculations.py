@@ -173,3 +173,22 @@ def test_calculate_pressure_drop_liquid_uses_phase_specific_model(calc):
     assert result["delta_p_total"] > 0
     assert math.isfinite(result["delta_p_acceleration"])
     assert result["gas_props_out"]["density"] > 0
+
+
+def test_calculate_pressure_drop_high_pressure(calc, high_pressure_inputs):
+    result = calc.calculate_pressure_drop(high_pressure_inputs)
+    assert result["P_out"] < high_pressure_inputs["P_in"]
+    assert result["delta_p_total"] > 0
+    assert result["velocity_out"] > result["velocity_in"]
+    assert result["gas_props_in"]["density"] > 0
+    assert result["gas_props_out"]["density"] > 0
+
+
+def test_calculate_max_length_high_pressure(calc, high_pressure_inputs):
+    inputs = dict(high_pressure_inputs)
+    inputs["target"] = "max_length"
+    inputs["P_out_target"] = 60e5
+    inputs["D_inner"] = 200
+    result = calc.calculate_max_length(inputs)
+    assert result["L_max"] > 0
+    assert result.get("Re", 0) > 0

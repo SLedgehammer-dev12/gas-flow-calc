@@ -9,111 +9,58 @@ from constants import (
     R_J_MOL_K, STD_PRESSURE_PA, STD_TEMP_K, MIN_PRESSURE_PA,
     BAR_TO_PA, MPA_TO_PA, SM3H_TO_M3S, G_PER_MOL_TO_KG_PER_MOL,
     KG_PER_MOL_TO_G_PER_MOL, KELVIN_TO_RANKINE, KG_M3_TO_G_PER_CC,
-    MICROPOISE_TO_PA_S, MM_TO_M, FRICTION_INIT_GUESS, FRICTION_CONVERGENCE,
-    FRICTION_SQRT_MIN, COLEBROOK_ROUGH_DIV, COLEBROOK_RE_DIV,
-    BINARY_SEARCH_ITER, DAK_NR_MAX_ITER, DAK_RHO_R_CONVERGENCE,
+    MICROPOISE_TO_PA_S, MM_TO_M, CELSIUS_TO_KELVIN,
+    FRICTION_INIT_GUESS, FRICTION_CONVERGENCE,
+    FRICTION_SQRT_MIN, BINARY_SEARCH_ITER,
+    DAK_NR_MAX_ITER, DAK_RHO_R_CONVERGENCE,
     THREAD_POOL_MAX_WORKERS, FUTURE_TIMEOUT_SEC, THERMO_CACHE_MAXSIZE,
 )
 from translations import t
 
-_GAS_NAME_LOOKUP = {}
-for gas_key, gas_props in COOLPROP_GASES.items():
-    canonical_name = gas_props["id"]
-    _GAS_NAME_LOOKUP[gas_key.casefold()] = canonical_name
-    _GAS_NAME_LOOKUP[canonical_name.casefold()] = canonical_name
-    _GAS_NAME_LOOKUP[gas_props["name"].casefold()] = canonical_name
+try:
+    from pyaga8 import Composition as _pyaga8_Composition
+    from pyaga8 import Gerg2008 as _pyaga8_Gerg2008
+    from pyaga8 import Detail as _pyaga8_Detail
+    _PYAGA8_AVAILABLE = True
+except ImportError:
+    _PYAGA8_AVAILABLE = False
 
-
-def solve_cubic(a2, a1, a0):
-    p = (3.0 * a1 - a2 * a2) / 3.0
-    q = (2.0 * a2 * a2 * a2 - 9.0 * a2 * a1 + 27.0 * a0) / 27.0
-    discriminant = (q / 2.0) ** 2 + (p / 3.0) ** 3
-    three = 3.0
-    offset = a2 / three
-
-    def _cube_root(val):
-        if val < 0:
-            return -((-val) ** (1.0 / 3.0))
-        return val ** (1.0 / 3.0)
-
-    if discriminant > 0:
-        u = _cube_root(-q / 2.0 + math.sqrt(discriminant))
-        v = _cube_root(-q / 2.0 - math.sqrt(discriminant))
-        r0 = u + v - offset
-        return [r0, r0, r0]
-    elif discriminant == 0:
-        u = _cube_root(-q / 2.0)
-        r0 = 2.0 * u - offset
-        r1 = -u - offset
-        return [r0, r1, r1]
-    else:
-        phi = math.acos(-q / 2.0 / math.sqrt(-(p / three) ** 3))
-        two_sqrt = 2.0 * math.sqrt(-p / three)
-        r0 = two_sqrt * math.cos(phi / three) - offset
-        r1 = two_sqrt * math.cos((phi + 2.0 * math.pi) / three) - offset
-        r2 = two_sqrt * math.cos((phi + 4.0 * math.pi) / three) - offset
-        return [r0, r1, r2]
-
-
-def _cp_arg(value):
-    if isinstance(value, str):
-        return value.encode("ascii")
-    return value
-
-
-def cp_propssi(*args):
-    try:
-        return CP.PropsSI(*args)
-    except TypeError:
-        return CP.PropsSI(*(_cp_arg(arg) for arg in args))
-
-
-def cp_abstract_state(backend, fluids):
-    try:
-        return CP.AbstractState(backend, fluids)
-    except TypeError:
-        return CP.AbstractState(_cp_arg(backend), _cp_arg(fluids))
-
-
-# Phase labels
-PHASE_LABEL_GAS = "Tek Fazli Gaz"
-PHASE_LABEL_LIQUID = "Tek Fazli Sivi"
-PHASE_LABEL_TWO_PHASE = "Iki Fazli (Gaz + Sivi Karisimi)"
-PHASE_LABEL_SUPERCRITICAL = "Superkritik"
-PHASE_LABEL_UNKNOWN = "Belirsiz"
-
-# Formula labels
-FORMULA_LABEL_LM = "Lockhart-Martinelli Iki Fazli Korelasyon"
-FORMULA_LABEL_DW_CHURCHILL = "Darcy-Weisbach + Churchill f + Ivmelenme Duzeltmesi"
-FORMULA_LABEL_DW_INCOMPRESSIBLE = "Darcy-Weisbach (Sabit Yogunluk)"
-FORMULA_LABEL_DW_COMPRESSIBLE = "Darcy-Weisbach (Sikistirilabilir Gaz)"
-
-# Phase warning messages
-WARN_LIQUID_DETECTED = (
-    "Sivi faz tespit edildi. Darcy-Weisbach, Churchill surtunme faktoru ve "
-    "yogunluk degisimine bagli ivmelenme duzeltmesi kullanildi. "
-    "Kot farki girdisi olmadigi icin yercekimi terimi hesaba dahil edilmedi."
+# Modular imports
+from eos.solver import solve_cubic
+from eos.models import calculate_cubic_eos_props as _module_cubic_eos
+from flow.utils import (
+    churchill_friction_factor,
+    lee_gonzalez_eakin_viscosity,
+    single_phase_segment_loss,
+    liquid_acceleration_loss,
+    two_phase_segment_loss,
 )
-WARN_CRYOGENIC_RISK = (
-    "Kriyojenik bolgede sivi/kati riski var ({component_text}). "
-    "CoolProp PT flash bu bolgede kararsiz olabilir; sonuc yaklasiktir."
+from thermo.utils import (
+    cp_propssi, cp_abstract_state, build_gas_name_lookup,
+    normalize_gas_name as thermo_normalize_gas_name,
+    get_pure_component_props,
+    calculate_standard_density, ideal_gas_sonic_velocity,
 )
-WARN_TWO_PHASE = "Iki fazli bolge tespit edildi. Faz-ozgul basinc kaybi korelasyonu henuz devrede degil."
-WARN_TWO_PHASE_ENVELOPE = (
-    "CoolProp PT flash dogrudan cozulmedi; faz zarfi kullanilarak iki fazli bolge tespit edildi."
+from pipe.selector import get_sorted_pipes as _module_get_sorted_pipes, calculate_pipe_weight_api5l, nd_sort_key
+from flow.utils import (
+    PHASE_LABEL_GAS, PHASE_LABEL_LIQUID, PHASE_LABEL_TWO_PHASE,
+    PHASE_LABEL_SUPERCRITICAL, PHASE_LABEL_UNKNOWN,
+    FORMULA_LABEL_LM, FORMULA_LABEL_DW_CHURCHILL,
+    FORMULA_LABEL_DW_INCOMPRESSIBLE, FORMULA_LABEL_DW_COMPRESSIBLE,
+    WARN_LIQUID_DETECTED, WARN_CRYOGENIC_RISK, WARN_TWO_PHASE,
+    WARN_TWO_PHASE_ENVELOPE, WARN_LOW_TEMP_SOLID, WARN_PT_NOT_SOLVED,
+    WARN_PHASE_UNKNOWN,
 )
-WARN_LOW_TEMP_SOLID = (
-    "Bazi bilesenler uclu nokta sicakliginin altinda ({component_text}); "
-    "kati faz riski nedeniyle CoolProp faz flash'i desteklenmedi."
-)
-WARN_PT_NOT_SOLVED = (
-    "CoolProp faz flash'i bu PT noktasinda cozulmedi. "
-    "Faz zarfi disi veya metastabil bolge nedeniyle sonuc tek-faz varsayimiyla yorumlanmalidir."
-)
-WARN_PHASE_UNKNOWN = "Faz belirlenemedi. Hesap tek faz varsayimlariyla yorumlanmalidir."
+
+_GAS_NAME_LOOKUP = build_gas_name_lookup(COOLPROP_GASES)
 
 
 class GasFlowCalculator:
+
+    @staticmethod
+    def _solve_cubic(a2, a1, a0):
+        return solve_cubic(a2, a1, a0)
+
     def __init__(self):
         self.log_callback = None
         self._std_density_cache = {}
@@ -123,6 +70,7 @@ class GasFlowCalculator:
         self._cache_lock = threading.Lock()
         self._cache_hits = 0
         self._last_composition_hash = None
+        self._sorted_pipes_cache = {}
 
     def set_log_callback(self, callback):
         """Log mesajlarını dışarıya (örn. GUI) iletmek için callback fonksiyonu."""
@@ -178,20 +126,7 @@ class GasFlowCalculator:
         return {k: v / total_moles for k, v in moles.items()}
 
     def normalize_gas_name(self, gas):
-        key = str(gas).strip().casefold()
-        canonical = _GAS_NAME_LOOKUP.get(key)
-        if canonical is None:
-            unicode_sub_map = str.maketrans(
-                "\u2080\u2081\u2082\u2083\u2084\u2085\u2086\u2087\u2088\u2089",
-                "0123456789"
-            )
-            key = key.translate(unicode_sub_map)
-            for k, v in _GAS_NAME_LOOKUP.items():
-                if k.translate(unicode_sub_map) == key:
-                    return v
-        if canonical is None:
-            raise ValueError(f"Desteklenmeyen gaz tanimi: {gas}")
-        return canonical
+        return thermo_normalize_gas_name(gas, _GAS_NAME_LOOKUP)
 
     def validate_inputs(self, inputs):
         if not inputs.get("mole_fractions"):
@@ -208,7 +143,11 @@ class GasFlowCalculator:
         mole_sum = 0.0
         for gas, mass_pct in mass_fractions.items():
             canonical = self.normalize_gas_name(gas)
-            gas_id = COOLPROP_GASES[canonical]["id"]
+            gas_id = canonical
+            for v in COOLPROP_GASES.values():
+                if v["id"] == canonical or v["name"] == canonical:
+                    gas_id = v["id"]
+                    break
             try:
                 MW = float(cp_propssi('M', gas_id)) * 1000
             except Exception:
@@ -216,7 +155,7 @@ class GasFlowCalculator:
             mw_map[canonical] = MW
             mole_sum += mass_pct / MW
         return {
-            gas: (mass_pct / mw_map[gas]) / mole_sum
+            gas: (mass_pct / mw_map[self.normalize_gas_name(gas)]) / mole_sum
             for gas, mass_pct in mass_fractions.items() if mass_pct > 0
         }
 
@@ -236,87 +175,17 @@ class GasFlowCalculator:
         return self.get_churchill_friction_factor(Re, relative_roughness)
 
     def get_churchill_friction_factor(self, Re, relative_roughness):
-        if Re <= 0:
-            self.log(f"Churchill: Gecersiz Reynolds sayisi ({Re}).", level="WARNING")
-            return 0.02
-        A = (2.457 * math.log(1.0 / ((7.0 / Re) ** 0.9 + 0.27 * relative_roughness))) ** 16
-        B = (37530.0 / Re) ** 16
-        f_churchill = 8.0 * ((8.0 / Re) ** 12.0 + 1.0 / (A + B) ** 1.5) ** (1.0 / 12.0)
-        return f_churchill
+        return churchill_friction_factor(Re, relative_roughness, log_callback=self.log)
+
+    def _lee_gonzalez_eakin_viscosity(self, T, density_kg_m3, MW_kg_kmol):
+        return lee_gonzalez_eakin_viscosity(T, density_kg_m3, MW_kg_kmol)
 
     def get_pure_component_props(self, gas_id):
-        try:
-            props = {
-                'Tc': cp_propssi('Tcrit', gas_id),
-                'Pc': cp_propssi('Pcrit', gas_id),
-                'omega': cp_propssi('ACENTRIC', gas_id),
-                'MW': cp_propssi('M', gas_id) * 1000
-            }
-            return props
-        except Exception as e:
-            raise ValueError(f"CoolProp hatasi ({gas_id}): Kritik ozellikler alinamadi. {str(e)}")
+        return get_pure_component_props(gas_id)
 
     def calculate_cubic_eos_props(self, P, T, mole_fractions, EOS_type):
-        self.log(f"Hesaplama: {EOS_type} modeli kullaniliyor.")
-        A_c, B_c = (0.45724, 0.07780) if EOS_type == "PR" else (0.42748, 0.08664)
-        kappa_coeffs = (0.37464, 1.54226, -0.26992) if EOS_type == "PR" else (0.48, 1.574, -0.176)
-
-        components = []
-        for gas, y in self.normalize_mole_fractions(mole_fractions).items():
-            props = self.get_pure_component_props(gas)
-            Tr = T / props['Tc']
-            kappa = kappa_coeffs[0] + kappa_coeffs[1] * props['omega'] + kappa_coeffs[2] * props['omega'] ** 2
-            alpha = (1.0 + kappa * (1.0 - math.sqrt(Tr))) ** 2
-            a_i = A_c * (alpha * (R_J_MOL_K ** 2) * (props['Tc'] ** 2)) / props['Pc']
-            b_i = B_c * (R_J_MOL_K * props['Tc']) / props['Pc']
-            components.append({'gas': gas, 'y': y, 'Tc': props['Tc'], 'Pc': props['Pc'],
-                              'MW': props['MW'], 'a_i': a_i, 'b_i': b_i, 'omega': props['omega']})
-
-        a_mix = 0.0
-        b_mix = 0.0
-        n = len(components)
-        for i in range(n):
-            b_mix += components[i]['y'] * components[i]['b_i']
-            for j in range(n):
-                a_mix += components[i]['y'] * components[j]['y'] * math.sqrt(components[i]['a_i'] * components[j]['a_i'])
-
-        A = a_mix * P / (R_J_MOL_K ** 2 * T ** 2)
-        B = b_mix * P / (R_J_MOL_K * T)
-        a2 = B - 1
-        a1 = A - 3 * B ** 2 - 2 * B
-        a0 = -A * B + B ** 2 + B ** 3
-        roots = solve_cubic(a2, a1, a0)
-        Z = max(roots)
-        if Z <= 0:
-            raise ValueError(f"{EOS_type} modelinde P={P / BAR_TO_PA:.1f} bara, T={T:.1f} K noktasinda gercek kok bulunamadi.")
-
-        MW_mix = sum(c['y'] * c['MW'] for c in components)
-        density = (P * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (Z * R_J_MOL_K * T)
-        standard_density = (STD_PRESSURE_PA * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (1.0 * R_J_MOL_K * STD_TEMP_K)
-
-        viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04)
-        Cp_mix = 0.0
-        Cv_mix = 0.0
-        for c in components:
-            try:
-                gas_id = COOLPROP_GASES.get(c['gas'], {}).get("id", c['gas'])
-                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas_id) / 1000
-                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas_id) / 1000
-            except Exception:
-                cp_i = 2.0
-                cv_i = 1.6
-            Cp_mix += c['y'] * cp_i
-            Cv_mix += c['y'] * cv_i
-
-        gamma = Cp_mix / Cv_mix if Cv_mix > 0 else 1.3
-        sonic_velocity = math.sqrt(gamma * Z * R_J_MOL_K * T / (MW_mix * G_PER_MOL_TO_KG_PER_MOL))
-        return {
-            "MW": MW_mix, "Cp": Cp_mix, "Cv": Cv_mix, "Z": Z,
-            "density": density, "viscosity": viscosity,
-            "standard_density": standard_density,
-            "viscosity_fallback": True, "thermo_fallback": True,
-            "sonic_velocity": sonic_velocity,
-        }
+        normalized = self.normalize_mole_fractions(mole_fractions)
+        return _module_cubic_eos(P, T, normalized, EOS_type, log_callback=self.log)
 
     def create_coolprop_state(self, mole_fractions):
         normalized = self.normalize_mole_fractions(mole_fractions)
@@ -636,100 +505,22 @@ class GasFlowCalculator:
         }
 
     def _single_phase_segment_loss(
-        self,
-        mass_flow,
-        density,
-        viscosity,
-        dL,
-        D_m,
-        area,
-        relative_roughness,
-        K_seg,
-        friction_model="colebrook",
+        self, mass_flow, density, viscosity, dL, D_m, area,
+        relative_roughness, K_seg,
     ):
-        velocity = mass_flow / (density * area) if density > 0 else 0.0
-        if density <= 0:
-            self.log("_single_phase_segment_loss: Yogunluk <= 0, segment atlaniyor.", level="WARNING")
-        if velocity <= 0 or viscosity <= 0:
-            return {
-                "dp_total": 0.0,
-                "dp_friction": 0.0,
-                "dp_fitting": 0.0,
-                "dp_acceleration": 0.0,
-                "velocity": velocity,
-                "Re": 0.0,
-                "f": 0.0,
-            }
-
-        Re = (density * velocity * D_m) / viscosity
-        if friction_model == "churchill":
-            f = self.get_churchill_friction_factor(Re, relative_roughness)
-        else:
-            f = self.get_friction_factor(Re, relative_roughness)
-        dp_friction = f * (dL / D_m) * (density * velocity**2) / 2
-        dp_fitting = K_seg * (density * velocity**2) / 2
-        return {
-            "dp_total": dp_friction + dp_fitting,
-            "dp_friction": dp_friction,
-            "dp_fitting": dp_fitting,
-            "dp_acceleration": 0.0,
-            "velocity": velocity,
-            "Re": Re,
-            "f": f,
-        }
+        return single_phase_segment_loss(
+            mass_flow, density, viscosity, dL, D_m, area,
+            relative_roughness, K_seg, log_callback=self.log,
+        )
 
     def _liquid_acceleration_loss(self, mass_flow, area, density_in, density_out):
-        if area <= 0 or density_in <= 0 or density_out <= 0:
-            return 0.0
-        mass_flux = mass_flow / area
-        return mass_flux * mass_flux * ((1.0 / density_out) - (1.0 / density_in))
+        return liquid_acceleration_loss(mass_flow, area, density_in, density_out)
 
     def _two_phase_segment_loss(self, m_dot, dL, D_m, area, relative_roughness, K_seg, split_props):
-        quality_mass = min(max(split_props["quality_mass"], 1e-6), 1.0 - 1e-6)
-
-        liquid_loss = self._single_phase_segment_loss(
-            m_dot * (1.0 - quality_mass),
-            split_props["rho_liquid"],
-            split_props["mu_liquid"],
-            dL,
-            D_m,
-            area,
-            relative_roughness,
-            K_seg,
-            friction_model="churchill",
+        return two_phase_segment_loss(
+            m_dot, dL, D_m, area, relative_roughness, K_seg, split_props,
+            log_callback=self.log,
         )
-        vapor_loss = self._single_phase_segment_loss(
-            m_dot * quality_mass,
-            split_props["rho_vapor"],
-            split_props["mu_vapor"],
-            dL,
-            D_m,
-            area,
-            relative_roughness,
-            K_seg,
-        )
-
-        dp_liquid = max(liquid_loss["dp_total"], 1e-9)
-        dp_vapor = max(vapor_loss["dp_total"], 1e-9)
-        X = math.sqrt(dp_liquid / dp_vapor)
-        phi_l_sq = 1.0 + 20.0 / max(X, 1e-6) + 1.0 / max(X * X, 1e-6)
-        dp_total = phi_l_sq * dp_liquid
-
-        bulk_density = 1.0 / (
-            quality_mass / split_props["rho_vapor"] + (1.0 - quality_mass) / split_props["rho_liquid"]
-        )
-        bulk_velocity = m_dot / (bulk_density * area)
-
-        return {
-            "dp_total": dp_total,
-            "dp_friction": dp_total,
-            "dp_fitting": 0.0,
-            "velocity": bulk_velocity,
-            "Re": vapor_loss["Re"],
-            "f": vapor_loss["f"],
-            "quality_mass": quality_mass,
-            "phi_l_sq": phi_l_sq,
-        }
 
     def _get_std_density(self, mixture):
         """Standart yoğunluğu cache'den al veya hesapla.
@@ -833,7 +624,7 @@ class GasFlowCalculator:
 
     def calculate_coolprop_properties(self, P, T, mixture, state=None, mole_fractions=None):
         # Termodinamik özellik cache’i: aynı (P, T, mixture) üçlüsü için tekrar hesaplama
-        cache_key = (round(P, -2), round(T, 2), mixture)
+        cache_key = (round(P, -1), round(T, 2), mixture)
         with self._cache_lock:
             if cache_key in self._thermo_cache:
                 return self._thermo_cache[cache_key]
@@ -890,17 +681,20 @@ class GasFlowCalculator:
             
             MW_mix = cp_propssi('M', 'P', P, 'T', T, mixture) * 1000
             thermo_fallback = False
+            density = cp_propssi('D', 'P', P, 'T', T, mixture)
 
             try:
                 viscosity = cp_propssi('V', 'P', P, 'T', T, mixture)
             except Exception:
                 viscosity_fallback = True
-                viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04) # Basit tahmin
+                if density > 0:
+                    viscosity = self._lee_gonzalez_eakin_viscosity(T, density, MW_mix)
+                else:
+                    viscosity = 1.5e-5 * math.sqrt(MW_mix / 16.04)
             
             Cp = cp_propssi('C', 'P', P, 'T', T, mixture) / 1000
             Cv = cp_propssi('O', 'P', P, 'T', T, mixture) / 1000
             Z = cp_propssi('Z', 'P', P, 'T', T, mixture)
-            density = cp_propssi('D', 'P', P, 'T', T, mixture)
             
             try:
                 sonic_velocity = cp_propssi('A', 'P', P, 'T', T, mixture)
@@ -978,21 +772,7 @@ class GasFlowCalculator:
         density = (P * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (Z * R_J_MOL_K * T)
         standard_density = (STD_PRESSURE_PA * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (1.0 * R_J_MOL_K * STD_TEMP_K) 
         
-        # Lee-Gonzalez-Eakin Viscosity Correlation
-        # API Technical Data Book Procedure 11A4.1
-        # MW: Molecular Weight
-        # T: Temperature (Rankine) -> Convert K to R
-        # rho: Density (g/cc) -> Convert kg/m3 to g/cc
-        
-        T_R = T * 1.8
-        rho_gcc = density / 1000.0
-        
-        X = 3.5 + 986.0 / T_R + 0.01 * MW_mix
-        Y = 2.4 - 0.2 * X
-        K = ( (9.4 + 0.02 * MW_mix) * T_R**1.5 ) / (209 + 19 * MW_mix + T_R)
-        
-        viscosity_micropoise = K * math.exp(X * (rho_gcc**Y))
-        viscosity = viscosity_micropoise * 1e-7 # Convert Micropoise to Pa.s (1 uP = 1e-7 Pa.s)
+        viscosity = self._lee_gonzalez_eakin_viscosity(T, density, MW_mix)
 
         Cp_mix, Cv_mix = 0, 0
         for gas, y in mole_fractions.items():
@@ -1030,8 +810,10 @@ class GasFlowCalculator:
             "Oxygen": "oxygen", "Water": "water", "HydrogenSulfide": "hydrogen_sulfide",
             "Helium": "helium", "Argon": "argon",
         }
+        if not _PYAGA8_AVAILABLE:
+            raise ImportError("pyaga8 kutuphanesi yuklu degil. AGA-8 modelleri kullanilamaz.")
         normalized = self.normalize_mole_fractions(mole_fractions)
-        comp = __import__("pyaga8").Composition()
+        comp = _pyaga8_Composition()
         total = 0.0
         for gas, fraction in normalized.items():
             field = _AGA8_COMPONENT_MAP.get(gas)
@@ -1046,7 +828,7 @@ class GasFlowCalculator:
                 if field:
                     setattr(comp, field, fraction / total)
 
-        EOS_class = __import__("pyaga8").Gerg2008 if eos_type == "GERG2008" else __import__("pyaga8").Detail
+        EOS_class = _pyaga8_Gerg2008 if eos_type == "GERG2008" else _pyaga8_Detail
         state = EOS_class()
         state.set_composition(comp)
         state.pressure = P / 1000.0
@@ -1063,13 +845,10 @@ class GasFlowCalculator:
         density_kg_m3 = state.d * MW_mix
         standard_density = (STD_PRESSURE_PA * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (1.0 * R_J_MOL_K * STD_TEMP_K)
 
-        # Lee-Gonzalez-Eakin viscosity
-        T_R = T * 1.8
-        rho_gcc = density_kg_m3 / 1000.0
-        X = 3.5 + 986.0 / T_R + 0.01 * MW_mix
-        Y = 2.4 - 0.2 * X
-        K = ((9.4 + 0.02 * MW_mix) * T_R ** 1.5) / (209 + 19 * MW_mix + T_R)
-        viscosity = K * math.exp(X * (rho_gcc ** Y)) * 1e-7
+        try:
+            viscosity = state.viscosity()
+        except Exception:
+            viscosity = self._lee_gonzalez_eakin_viscosity(T, density_kg_m3, MW_mix)
 
         return {
             "MW": MW_mix,
@@ -1080,8 +859,72 @@ class GasFlowCalculator:
             "viscosity": viscosity,
             "standard_density": standard_density,
             "sonic_velocity": state.w,
-            "viscosity_fallback": False,
+            "viscosity_fallback": isinstance(viscosity, float) and viscosity < 1e-10,
             "thermo_fallback": False,
+        }
+
+    def calculate_gerg88_properties(self, P, T, mole_fractions):
+        _GERG88_CALORIFIC_VALUES = {
+            "METHANE": 37.78, "ETHANE": 66.07, "PROPANE": 93.94,
+            "NBUTANE": 121.8, "ISOBUTANE": 120.8, "NPENTANE": 148.5,
+            "ISOPENTANE": 148.5, "NHEXANE": 177.5, "HYDROGEN": 12.75,
+            "NITROGEN": 0.0, "CARBONDIOXIDE": 0.0, "OXYGEN": 0.0,
+            "HELIUM": 0.0, "ARGON": 0.0, "WATER": 0.0,
+        }
+
+        import pygerg
+
+        normalized = self.normalize_mole_fractions(mole_fractions)
+
+        x3 = sum(v for k, v in normalized.items() if k in ("CARBONDIOXIDE", "CarbonDioxide"))
+        x5 = sum(v for k, v in normalized.items() if k in ("HYDROGEN", "Hydrogen"))
+
+        MW_mix = 0.0
+        hs = 0.0
+        for gas, fraction in normalized.items():
+            props = self.get_pure_component_props(gas)
+            mw = props["MW"]
+            MW_mix += fraction * mw
+            hs += fraction * _GERG88_CALORIFIC_VALUES.get(gas, 0.0)
+
+        if hs <= 0:
+            hs = 38.0
+
+        rm = MW_mix / 28.96
+
+        P_bar = max(0, P / BAR_TO_PA)
+        T_c = T - CELSIUS_TO_KELVIN
+
+        try:
+            _, Z, molar_density = pygerg.sgerg(x3, hs, rm, x5, P_bar, T_c)
+        except Exception:
+            Z = 1.0
+            molar_density = P / (R_J_MOL_K * T)
+
+        density = molar_density * MW_mix * G_PER_MOL_TO_KG_PER_MOL
+        standard_density = (STD_PRESSURE_PA * MW_mix * G_PER_MOL_TO_KG_PER_MOL) / (1.0 * R_J_MOL_K * STD_TEMP_K)
+
+        viscosity = self._lee_gonzalez_eakin_viscosity(T, density, MW_mix)
+
+        Cp_mix, Cv_mix = 0.0, 0.0
+        for gas, fraction in normalized.items():
+            try:
+                cp_i = cp_propssi('CP0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas) / 1000
+                cv_i = cp_propssi('CV0MASS', 'T', T, 'P', STD_PRESSURE_PA, gas) / 1000
+            except Exception:
+                cp_i, cv_i = 2.0, 1.6
+            Cp_mix += fraction * cp_i
+            Cv_mix += fraction * cv_i
+
+        gamma = Cp_mix / Cv_mix if Cv_mix > 0 else 1.3
+        sonic_velocity = math.sqrt(gamma * Z * R_J_MOL_K * T / (MW_mix * G_PER_MOL_TO_KG_PER_MOL))
+
+        return {
+            "MW": MW_mix, "Cp": Cp_mix, "Cv": Cv_mix, "Z": Z,
+            "density": density, "viscosity": viscosity,
+            "standard_density": standard_density,
+            "viscosity_fallback": False, "thermo_fallback": False,
+            "sonic_velocity": sonic_velocity,
         }
 
     def calculate_thermo_properties(self, P, T, mole_fractions, library_choice, state=None):
@@ -1099,6 +942,8 @@ class GasFlowCalculator:
             return self.calculate_cubic_eos_props(P, T, mole_fractions, "SRK")
         elif library_choice == "Pseudo-Critical (Kay's Rule)":
             return self.calculate_pseudo_critical_properties(P, T, mole_fractions)
+        elif library_choice == "GERG-88 (Virial EOS)":
+            return self.calculate_gerg88_properties(P, T, mole_fractions)
         else:
             raise ValueError(f"Geçersiz termodinamik model seçimi: {library_choice}")
 
@@ -1196,7 +1041,6 @@ class GasFlowCalculator:
                     A,
                     relative_roughness,
                     K_seg,
-                    friction_model="churchill" if liquid_phase else "colebrook",
                 )
                 P_next = max(MIN_PRESSURE_PA, P_current - segment["dp_total"])
                 if P_current - segment["dp_total"] < MIN_PRESSURE_PA and not pressure_clamped:
@@ -1295,9 +1139,8 @@ class GasFlowCalculator:
             elif velocity_out > 0.8 * sonic_velocity_out:
                 choked_flow_status = "Warning (Mach > 0.8)"
 
-        phase_info = first_two_phase_info or phase_info_out
-        if transition_to_two_phase_m is not None and phase_info["phase"] == "two_phase":
-            phase_info = dict(phase_info)
+        phase_info = dict(phase_info_out)
+        if transition_to_two_phase_m is not None:
             phase_info["transition_to_two_phase_m"] = transition_to_two_phase_m
 
         return {
@@ -1372,6 +1215,13 @@ class GasFlowCalculator:
         L_max = 0; Re_final = 0; f_final = 0; delta_p_pipe = 0; delta_p_fittings = 0; delta_p_acceleration = 0
         phase_aware_binary = phase_info["phase"] in {"liquid", "two_phase", "unknown"}
 
+        f_est = self.get_churchill_friction_factor(
+            (rho_in * velocity_in * D_m) / gas_props_in['viscosity'] if gas_props_in['viscosity'] > 0 else 1e5,
+            relative_roughness
+        )
+        L_est = (delta_p_total_target * 2 * D_m) / (f_est * rho_in * velocity_in ** 2) if velocity_in > 0 else 1000.0
+        L_high_limit = max(1_000_000.0, L_est * 10.0)
+
         if phase_aware_binary:
             def solve_outlet_pressure(length, num_segments):
                 profile_inputs = dict(inputs)
@@ -1397,22 +1247,31 @@ class GasFlowCalculator:
                     "flow_mode": flow_mode,
                 }
 
-            L_low, L_high = 0.0, 1000000.0
-            best_profile = zero_profile
+            L_low = 0.0
+            L_high = L_high_limit
 
-            for _ in range(40):
-                L_mid = (L_low + L_high) / 2
-                P2, profile = solve_outlet_pressure(L_mid, num_segments=8)
-                if P2 < P_out_target:
-                    L_high = L_mid
+            def _f(length_val):
+                P2, _prof = solve_outlet_pressure(length_val, num_segments=6)
+                return P2 - P_out_target
+
+            try:
+                from scipy.optimize import brentq
+                if _f(L_high) > 0:
+                    L_max = L_high
                 else:
-                    L_low = L_mid
-                    best_profile = profile
+                    L_max = brentq(_f, L_low, L_high, xtol=0.1, maxiter=50)
+            except Exception:
+                for _ in range(40):
+                    L_mid = (L_low + L_high) / 2
+                    if _f(L_mid) < 0:
+                        L_high = L_mid
+                    else:
+                        L_low = L_mid
+                    if abs(L_high - L_low) < 0.1:
+                        break
+                L_max = L_low
 
-                if abs(L_high - L_low) < 0.1:
-                    break
-
-            L_max = L_low
+            best_profile = solve_outlet_pressure(L_max, num_segments=8)[1]
             Re_final = best_profile.get("Re", 0.0)
             f_final = best_profile.get("f", 0.0)
             delta_p_pipe = best_profile.get("delta_p_pipe", 0.0)
@@ -1443,7 +1302,11 @@ class GasFlowCalculator:
         else: # Sıkıştırılabilir (Binary Search)
             def solve_outlet_pressure(length):
                 P1 = P_in
-                P2 = P1 if length <= 0 else P1 * 0.9
+                if length <= 0:
+                    P2 = P1
+                else:
+                    frac = min(1.0, length / max(1.0, L_high_limit))
+                    P2 = max(MIN_PRESSURE_PA, P1 - delta_p_total_target * frac)
                 Re = 0.0; f = 0.0; dp_pipe_local = 0.0; dp_fit_local = 0.0
 
                 for _ in range(20):
@@ -1478,24 +1341,31 @@ class GasFlowCalculator:
                     "flow_mode": flow_mode,
                 }
 
-            L_low, L_high = 0.0, 1000000.0 # 1000 km üst limit
-            best_Re = Re_zero; best_f = f_zero; best_dp_pipe = 0.0; best_dp_fit = dp_fit_zero
+            L_low = 0.0
+            L_high = L_high_limit
 
-            for _ in range(50): # Binary Search İterasyonu
-                L_mid = (L_low + L_high) / 2
-                P2, Re, f, dp_pipe_mid, dp_fit_mid = solve_outlet_pressure(L_mid)
+            def _f_comp(length_val):
+                P2, _, _, _, _ = solve_outlet_pressure(length_val)
+                return P2 - P_out_target
 
-                if P2 < P_out_target: # Basınç çok düştü, L çok uzun
-                    L_high = L_mid
-                else: # Basınç hala yüksek, L daha uzun olabilir
-                    L_low = L_mid
-                    best_Re = Re; best_f = f; best_dp_pipe = dp_pipe_mid; best_dp_fit = dp_fit_mid
+            try:
+                from scipy.optimize import brentq
+                if _f_comp(L_high) > 0:
+                    L_max = L_high
+                else:
+                    L_max = brentq(_f_comp, L_low, L_high, xtol=0.1, maxiter=50)
+            except Exception:
+                for _ in range(50):
+                    L_mid = (L_low + L_high) / 2
+                    if _f_comp(L_mid) < 0:
+                        L_high = L_mid
+                    else:
+                        L_low = L_mid
+                    if abs(L_high - L_low) < 0.1:
+                        break
+                L_max = L_low
 
-                if abs(L_high - L_low) < 0.1: break
-
-            L_max = L_low
-            Re_final = best_Re; f_final = best_f
-            delta_p_pipe = best_dp_pipe; delta_p_fittings = best_dp_fit
+            _, Re_final, f_final, delta_p_pipe, delta_p_fittings = solve_outlet_pressure(L_max)
 
         result = {
             "L_max": L_max, 
@@ -1508,7 +1378,7 @@ class GasFlowCalculator:
             "flow_mode": flow_mode,
             "velocity_in": velocity_in,
             "velocity_out": velocity_in,
-            "P_out": P_in,
+            "P_out": P_out_target if L_max > 0 else P_in,
         }
 
         if L_max > 0:
@@ -1529,8 +1399,10 @@ class GasFlowCalculator:
             result["velocity_out"] = final_profile.get("velocity_out", velocity_in)
             result["P_out"] = final_profile.get("P_out", P_out_target)
             result["f"] = final_profile.get("f", f_final)
-        else:
-            result["gas_props_out"] = gas_props_in
+        elif P_out_target > 0 and P_out_target < P_in:
+            result["gas_props_out"] = self.calculate_thermo_properties(
+                P_out_target, T, mole_fractions, library_choice, cp_state
+            )
 
         return result
 
@@ -1759,21 +1631,11 @@ class GasFlowCalculator:
         return result
 
     def get_sorted_pipes(self, P_design_pa, SMYS_mpa, F, E, T):
-        SMYS = SMYS_mpa * 1e6  # MPa -> Pa
-        all_pipes = []
-        for nominal, data in ASME_B36_10M_DATA.items():
-            OD = data["OD_mm"]
-            t_required = (P_design_pa * (OD / 1000)) / (2 * SMYS * F * E * T) * 1000
-            for schedule, t in data["schedules"].items():
-                D_inner = OD - 2 * t
-                if t >= t_required:
-                    all_pipes.append({
-                        "nominal": nominal, "OD_mm": OD, "schedule": schedule, "t_mm": t,
-                        "D_inner_mm": D_inner, "t_required_mm": t_required
-                    })
-        
-        # Sıralama
-        def sort_key(pipe):
-            return pipe['D_inner_mm'] # İç çapa göre sırala
-        all_pipes.sort(key=sort_key)
+        cache_key = (round(P_design_pa, -2), round(SMYS_mpa, 1), F, E, T)
+        with self._cache_lock:
+            if cache_key in self._sorted_pipes_cache:
+                return self._sorted_pipes_cache[cache_key]
+        all_pipes = _module_get_sorted_pipes(P_design_pa, SMYS_mpa, F, E, T)
+        with self._cache_lock:
+            self._sorted_pipes_cache[cache_key] = all_pipes
         return all_pipes

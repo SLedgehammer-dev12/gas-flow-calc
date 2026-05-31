@@ -6,6 +6,7 @@ from target_utils import (
     TARGET_MIN_DIAMETER,
 )
 from ui.widgets import ValidationHelper
+from theme_colors import get_theme_colors
 
 
 class SchematicDrawer:
@@ -107,12 +108,8 @@ class SchematicDrawer:
 
         # Stile göre canvas arka planını güncelle
         theme = getattr(self.app, 'current_theme', 'light')
-        theme_colors = getattr(self.app, '_colors', {
-            "bg": "#f0f3f8", "card": "#ffffff", "accent": "#1a237e", "accent2": "#283593",
-            "accent_light": "#e8eaf6", "txt_dark": "#1c2032", "txt_mid": "#455a64",
-            "txt_light": "#78909c", "success": "#2e7d32", "warn": "#e65100", "err": "#c62828"
-        })
-        canvas.config(bg=theme_colors.get('card', '#ffffff'), highlightthickness=0)
+        theme_palette = get_theme_colors(theme)
+        canvas.config(bg=theme_palette.get('card', '#ffffff'), highlightthickness=0)
 
         w = canvas.winfo_width()
         h = canvas.winfo_height()
@@ -127,83 +124,49 @@ class SchematicDrawer:
         margin_x   = max(90, w * 0.10)
         pipe_x1    = margin_x
         pipe_x2    = w - margin_x
-        pipe_half  = 24          # boru yüksekliğinin yarısı
+        pipe_half  = 24
 
         # ========== RENK PALETLERİ & KART ARKA PLANLARI ==========
         if theme == "dark":
             grid_color = "#25252d"
             card_bg = {
-                'known':   "#1a233d",
-                'result':  "#1b3320",
-                'warning': "#33241b",
-                'error':   "#3d1b1b",
-                'neutral': "#25252d"
+                'known':   "#1a233d", 'result':  "#1b3320",
+                'warning': "#33241b", 'error':   "#3d1b1b", 'neutral': "#25252d"
             }
             C = {
-                'known':     theme_colors.get('accent', '#8c9eff'),
-                'unknown':   theme_colors.get('err', '#e57373'),
-                'result':    theme_colors.get('success', '#81c784'),
-                'warning':   theme_colors.get('warn', '#ffb74d'),
-                'text':      theme_colors.get('txt_dark', '#e2e2e9'),
-                'subtext':   theme_colors.get('txt_mid', '#a5a5b2'),
-                'pipe_ok':   "#2a3154",
-                'pipe_olok': theme_colors.get('accent', '#8c9eff'),
-                'pipe_pnd':  "#3d2f1f",
-                'pipe_olpnd':theme_colors.get('warn', '#ffb74d'),
-                'pipe_err':  "#4c1c1c",
-                'pipe_olerr':theme_colors.get('err', '#e57373'),
-                'pipe_calc': "#1e351f",
-                'pipe_olcalc':theme_colors.get('success', '#81c784'),
+                'known':     theme_palette.get('accent', '#8c9eff'),
+                'unknown':   theme_palette.get('err', '#e57373'),
+                'result':    theme_palette.get('success', '#81c784'),
+                'warning':   theme_palette.get('warn', '#ffb74d'),
+                'text':      theme_palette.get('txt_dark', '#e2e2e9'),
+                'subtext':   theme_palette.get('txt_mid', '#a5a5b2'),
+                'pipe_ok':   "#2a3154", 'pipe_olok': theme_palette.get('accent', '#8c9eff'),
+                'pipe_pnd':  "#3d2f1f", 'pipe_olpnd': theme_palette.get('warn', '#ffb74d'),
+                'pipe_err':  "#4c1c1c", 'pipe_olerr': theme_palette.get('err', '#e57373'),
+                'pipe_calc': "#1e351f", 'pipe_olcalc': theme_palette.get('success', '#81c784'),
             }
         elif theme == "contrast":
             grid_color = "#1c1c1c"
-            card_bg = {
-                'known':   "#000000",
-                'result':  "#000000",
-                'warning': "#000000",
-                'error':   "#000000",
-                'neutral': "#000000"
-            }
+            card_bg = {'known': "#000", 'result': "#000", 'warning': "#000", 'error': "#000", 'neutral': "#000"}
             C = {
-                'known':     "#ffff00",
-                'unknown':   "#ff0000",
-                'result':    "#00ff00",
-                'warning':   "#ffaa00",
-                'text':      "#ffffff",
-                'subtext':   "#dddddd",
-                'pipe_ok':   "#333333",
-                'pipe_olok': "#ffffff",
-                'pipe_pnd':  "#222222",
-                'pipe_olpnd':"#ffff00",
-                'pipe_err':  "#442222",
-                'pipe_olerr':"#ff0000",
-                'pipe_calc': "#223322",
-                'pipe_olcalc':"#00ff00",
+                'known': "#ff0", 'unknown': "#f00", 'result': "#0f0", 'warning': "#fa0",
+                'text': "#fff", 'subtext': "#ddd",
+                'pipe_ok': "#333", 'pipe_olok': "#fff", 'pipe_pnd': "#222", 'pipe_olpnd': "#ff0",
+                'pipe_err': "#422", 'pipe_olerr': "#f00", 'pipe_calc': "#232", 'pipe_olcalc': "#0f0",
             }
         else:
             grid_color = "#f7f7f7"
             card_bg = {
-                'known':   "#e3f2fd",
-                'result':  "#e8f5e9",
-                'warning': "#fff3e0",
-                'error':   "#ffebee",
-                'neutral': "#f5f5f5"
+                'known': "#e3f2fd", 'result': "#e8f5e9", 'warning': "#fff3e0",
+                'error': "#ffebee", 'neutral': "#f5f5f5"
             }
             C = {
-                'known':     "#1565c0",
-                'unknown':   "#c62828",
-                'result':    "#2e7d32",
-                'warning':   "#e65100",
-                'text':      "#37474f",
-                'subtext':   "#78909c",
-                'pipe_ok':   "#bbdefb",
-                'pipe_olok': "#1565c0",
-                'pipe_pnd':  "#fff3e0",
-                'pipe_olpnd':"#fb8c00",
-                'pipe_err':  "#ffcdd2",
-                'pipe_olerr':"#c62828",
-                'pipe_calc': "#f1f8e9",
-                'pipe_olcalc':"#388e3c",
+                'known': "#1565c0", 'unknown': "#c62828", 'result': "#2e7d32",
+                'warning': "#e65100", 'text': "#37474f", 'subtext': "#78909c",
+                'pipe_ok': "#bbdefb", 'pipe_olok': "#1565c0",
+                'pipe_pnd': "#fff3e0", 'pipe_olpnd': "#fb8c00",
+                'pipe_err': "#ffcdd2", 'pipe_olerr': "#c62828",
+                'pipe_calc': "#f1f8e9", 'pipe_olcalc': "#388e3c",
             }
 
         # ========== ARKAPLAN GRİDİ ==========

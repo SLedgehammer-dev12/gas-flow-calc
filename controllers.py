@@ -2,6 +2,7 @@ from translations import t
 from data import PIPE_ROUGHNESS, FITTING_K_FACTORS
 from calculations import GasFlowCalculator
 from format_utils import safe_format, safe_number, safe_text
+from constants import convert_pressure_to_pa, convert_temperature_to_k
 from flow_utils import FLOW_MODE_INCOMPRESSIBLE, normalize_flow_mode
 from target_utils import (
     TARGET_PRESSURE_DROP,
@@ -36,29 +37,29 @@ class GasFlowController:
         else:
             gas_components = ui_state.get("gas_components", {})
             if not gas_components:
-                errors.append(t("validation_add_gas") if t("validation_add_gas") != "validation_add_gas" else "Lütfen en az bir gaz bileşeni ekleyin.")
+                errors.append(t("validation_add_gas", "Lütfen en az bir gaz bileşeni ekleyin."))
             else:
                 total_mole = sum(self._parse_float(v) for v in gas_components.values())
                 if total_mole <= 0:
-                    errors.append("Gaz oranları toplamı pozitif olmalıdır.")
+                    errors.append(t("val_mole_total_positive", "Gaz oranları toplamı pozitif olmalıdır."))
                 else:
                     mole_fractions = {k: self._parse_float(v)/total_mole for k, v in gas_components.items() if self._parse_float(v) > 0}
                     
-        if ui_state.get("comp_type") == "Kütle %" and mole_fractions:
+        if ui_state.get("comp_type") == t("mass_percent", "Kütle %") and mole_fractions:
             mole_fractions = self.calculator.mass_to_mole_fraction(mole_fractions)
             
         # 2. Basic Params Validation
         p_in_val = self._parse_float(ui_state.get("p_in", 0))
-        if p_in_val <= 0: errors.append(t("validation_positive_pressure") if "validation_positive_pressure" in t("validation_positive_pressure") else "Giriş basıncı pozitif olmalıdır.")
-        if p_in_val > 1000: errors.append("Giriş basıncı 1000 bar'dan büyük olamaz.")
-        
+        if p_in_val <= 0: errors.append(t("val_pressure_positive", "Giriş basıncı pozitif olmalıdır."))
+        if p_in_val > 1000: errors.append(t("val_pressure_max", "Giriş basıncı 1000 bar'dan büyük olamaz."))
+
         t_val = self._parse_float(ui_state.get("t_val", 25))
-        if t_val <= -273.15: errors.append("Sıcaklık mutlak sıfırdan büyük olmalıdır.")
-        if t_val > 500: errors.append("Sıcaklık 500°C'den büyük olamaz.")
-        
+        if t_val <= -273.15: errors.append(t("val_temp_abs_zero", "Sıcaklık mutlak sıfırdan büyük olmalıdır."))
+        if t_val > 500: errors.append(t("val_temp_max", "Sıcaklık 500°C'den büyük olamaz."))
+
         flow_val = self._parse_float(ui_state.get("flow_val", 0))
-        if flow_val <= 0: errors.append(t("validation_positive_flow") if "validation_positive_flow" in t("validation_positive_flow") else "Akış debisi pozitif olmalıdır.")
-        if flow_val > 1e8: errors.append("Akış debisi çok yüksek. Lütfen değeri kontrol edin.")
+        if flow_val <= 0: errors.append(t("val_flow_positive", "Akış debisi pozitif olmalıdır."))
+        if flow_val > 1e8: errors.append(t("val_flow_too_high", "Akış debisi çok yüksek. Lütfen değeri kontrol edin."))
         
         target = ui_state.get("calc_target")
         
@@ -73,56 +74,40 @@ class GasFlowController:
         flow_mode = normalize_flow_mode(flow_type)
         
         if target == TARGET_PRESSURE_DROP:
-            if len_val <= 0: errors.append("Boru uzunluğu pozitif olmalıdır.")
-            if diam_val <= 0: errors.append("Boru çapı pozitif olmalıdır.")
-            if thick_val >= diam_val / 2: errors.append("Et kalınlığı yarıçaptan küçük olmalıdır.")
+            if len_val <= 0: errors.append(t("val_length_positive", "Boru uzunluğu pozitif olmalıdır."))
+            if diam_val <= 0: errors.append(t("val_diameter_positive", "Boru çapı pozitif olmalıdır."))
+            if thick_val >= diam_val / 2: errors.append(t("val_thickness_range", "Et kalınlığı yarıçaptan küçük olmalıdır."))
         elif target == TARGET_MAX_LENGTH:
-            if target_p_val <= 0: errors.append("Hedef çıkış basıncı pozitif olmalıdır.")
-            if diam_val <= 0: errors.append("Boru çapı pozitif olmalıdır.")
+            if target_p_val <= 0: errors.append(t("val_target_pressure_positive", "Hedef çıkış basıncı pozitif olmalıdır."))
+            if diam_val <= 0: errors.append(t("val_diameter_positive", "Boru çapı pozitif olmalıdır."))
         elif target == TARGET_MIN_DIAMETER:
-            if max_vel <= 0: errors.append("Maksimum hız limiti pozitif olmalıdır.")
-            if p_design_val <= 0: errors.append("Tasarım basıncı pozitif olmalıdır.")
+            if max_vel <= 0: errors.append(t("val_max_velocity_positive", "Maksimum hız limiti pozitif olmalıdır."))
+            if p_design_val <= 0: errors.append(t("val_design_pressure_positive", "Tasarım basıncı pozitif olmalıdır."))
             if flow_mode != FLOW_MODE_INCOMPRESSIBLE and len_val <= 0:
-                errors.append("Sıkıştırılabilir akış çap hesabı için boru uzunluğu gereklidir.")
+                errors.append(t("val_length_required_compressible", "Sıkıştırılabilir akış çap hesabı için boru uzunluğu gereklidir."))
 
         D_inner = diam_val - 2 * thick_val
         if target != TARGET_MIN_DIAMETER and D_inner <= 0:
-            errors.append("Geçersiz boru çapı/kalınlığı. İç çap negatif veya sıfır olamaz.")
-        
+            errors.append(t("val_invalid_diameter", "Geçersiz boru çapı/kalınlığı. İç çap negatif veya sıfır olamaz."))
+
         smys_val = self._parse_float(ui_state.get("smys_val", 0))
         if target == TARGET_MIN_DIAMETER and smys_val <= 0:
-            errors.append("Minimum çap hesabı için SMYS (akma dayanımı) pozitif olmalıdır.")
+            errors.append(t("val_smys_positive", "Minimum çap hesabı için SMYS (akma dayanımı) pozitif olmalıdır."))
             
         if errors:
             return None, errors
             
         # Conversions
-        p_unit = ui_state.get("p_unit")
-        if p_unit == "Barg": P_in = (p_in_val + 1.01325) * 1e5
-        elif p_unit == "Bara": P_in = p_in_val * 1e5
-        elif p_unit == "Psig": P_in = (p_in_val + 14.696) * 6894.76
-        else: P_in = p_in_val * 6894.76
-        
-        t_unit = str(ui_state.get("t_unit", "°C")).strip() # Use cleaned string
-        if t_unit == "°C": T = t_val + 273.15
-        elif t_unit == "°F": T = (t_val - 32) * 5/9 + 273.15
-        else: T = t_val
+        P_in = convert_pressure_to_pa(p_in_val, ui_state.get("p_unit"))        
+        T = convert_temperature_to_k(t_val, ui_state.get("t_unit", "°C"))
         
         # Target pressure conversion
         target_p_unit = ui_state.get("target_p_unit", "Barg")
-        abs_pa_target = 0
-        if target_p_unit == "Barg": abs_pa_target = (target_p_val + 1.01325) * 1e5
-        elif target_p_unit == "Bara": abs_pa_target = target_p_val * 1e5
-        elif target_p_unit == "Psig": abs_pa_target = (target_p_val + 14.696) * 6894.76
-        elif target_p_unit == "Psia": abs_pa_target = target_p_val * 6894.76
+        abs_pa_target = convert_pressure_to_pa(target_p_val, target_p_unit)
         
         # Design pressure conversion
         p_design_unit = ui_state.get("p_design_unit", "Barg")
-        abs_pa_design = 0
-        if p_design_unit == "Barg": abs_pa_design = (p_design_val + 1.01325) * 1e5
-        elif p_design_unit == "Bara": abs_pa_design = p_design_val * 1e5
-        elif p_design_unit == "Psig": abs_pa_design = (p_design_val + 14.696) * 6894.76
-        elif p_design_unit == "Psia": abs_pa_design = p_design_val * 6894.76
+        abs_pa_design = convert_pressure_to_pa(p_design_val, p_design_unit)
         P_design_gauge = max(0, abs_pa_design - 101325)
         
         # Fittings K
@@ -165,53 +150,53 @@ class GasFlowController:
         rows = []
         
         if target == TARGET_PRESSURE_DROP:
-            rows.append(("Giriş Basıncı", safe_format(self._parse_float(ui_state.get('p_in', 0)), ".2f"), ui_state.get('p_unit', '')))
-            rows.append(("Çıkış Basıncı", safe_format(safe_number(result['P_out'], 0.0)/1e5, ".4f"), "bara"))
-            rows.append(("Toplam Basınç Kaybı", safe_format(safe_number(result['delta_p_total'], 0.0)/1e5, ".4f"), "bar"))
-            rows.append(("Giriş Hızı", safe_format(result['velocity_in'], ".2f"), "m/s"))
-            rows.append(("Çıkış Hızı", safe_format(result['velocity_out'], ".2f"), "m/s"))
-            
+            rows.append((t("label_inlet_pressure", "Giriş Basıncı"), safe_format(self._parse_float(ui_state.get('p_in', 0)), ".2f"), ui_state.get('p_unit', '')))
+            rows.append((t("label_outlet_pressure", "Çıkış Basıncı"), safe_format(safe_number(result['P_out'], 0.0)/1e5, ".4f"), "bara"))
+            rows.append((t("label_total_pressure_drop", "Toplam Basınç Kaybı"), safe_format(safe_number(result['delta_p_total'], 0.0)/1e5, ".4f"), "bar"))
+            rows.append((t("label_inlet_velocity", "Giriş Hızı"), safe_format(result['velocity_in'], ".2f"), "m/s"))
+            rows.append((t("label_outlet_velocity", "Çıkış Hızı"), safe_format(result['velocity_out'], ".2f"), "m/s"))
+
         elif target == TARGET_MAX_LENGTH:
             if "error" in result:
-                rows.append(("Durum", "HATA", "", "error"))
-                rows.append(("Mesaj", safe_text(result['error']), ""))
+                rows.append((t("label_status", "Durum"), t("label_error", "HATA"), "", "error"))
+                rows.append((t("label_message", "Mesaj"), safe_text(result['error']), ""))
             else:
-                rows.append(("Maksimum Uzunluk", safe_format(result['L_max'], ".2f"), "m"))
+                rows.append((t("label_max_length", "Maksimum Uzunluk"), safe_format(result['L_max'], ".2f"), "m"))
                 rows.append(("Reynolds", safe_format(result['Re'], ".0f"), ""))
-                rows.append(("Sürtünme Faktörü (f)", safe_format(result.get('f'), ".5f"), ""))
-                rows.append(("Giriş Hızı", safe_format(result.get('velocity_in'), ".2f"), "m/s"))
-                rows.append(("Çıkış Hızı", safe_format(result.get('velocity_out'), ".2f"), "m/s"))
-                rows.append(("Çıkış Basıncı", safe_format(safe_number(result.get('P_out'), 0.0)/1e5, ".4f"), "bara"))
-                
+                rows.append((t("label_friction_factor", "Sürtünme Faktörü (f)"), safe_format(result.get('f'), ".5f"), ""))
+                rows.append((t("label_inlet_velocity", "Giriş Hızı"), safe_format(result.get('velocity_in'), ".2f"), "m/s"))
+                rows.append((t("label_outlet_velocity", "Çıkış Hızı"), safe_format(result.get('velocity_out'), ".2f"), "m/s"))
+                rows.append((t("label_outlet_pressure", "Çıkış Basıncı"), safe_format(safe_number(result.get('P_out'), 0.0)/1e5, ".4f"), "bara"))
+
         elif target == TARGET_MIN_DIAMETER:
             if result.get('selected_pipe'):
                 p = result['selected_pipe']
-                rows.append(("Seçilen Boru", f"{safe_text(p['nominal'])}\"", f"Sch {safe_text(p['schedule'])}", "success"))
-                rows.append(("İç Çap", safe_format(p['D_inner_mm'], ".2f"), "mm"))
+                rows.append((t("label_selected_pipe", "Seçilen Boru"), f"{safe_text(p['nominal'])}\"", f"Sch {safe_text(p['schedule'])}", "success"))
+                rows.append((t("label_inner_diameter", "İç Çap"), safe_format(p['D_inner_mm'], ".2f"), "mm"))
                 if 'weight_per_m' in p:
-                    rows.append((t("unit_weight") if t("unit_weight") != "unit_weight" else "Birim Ağırlık", safe_format(p['weight_per_m'], ".2f"), "kg/m"))
-                rows.append(("Çıkış Hızı", safe_format(result['velocity_out'], ".2f"), "m/s"))
-                rows.append(("Limit Hız", safe_format(result['max_vel'], ".2f"), "m/s"))
-                
+                    rows.append((t("unit_weight", "Birim Ağırlık"), safe_format(p['weight_per_m'], ".2f"), "kg/m"))
+                rows.append((t("label_outlet_velocity", "Çıkış Hızı"), safe_format(result['velocity_out'], ".2f"), "m/s"))
+                rows.append((t("label_limit_velocity", "Limit Hız"), safe_format(result['max_vel'], ".2f"), "m/s"))
+
                 status_tag = "success" if "Uygun" in result['velocity_status'] else "warning"
-                rows.append(("Durum", result['velocity_status'], "", status_tag))
-                
-                # Alternatives
-                if 'alternatives' in result and result['alternatives']: # Dict instead of list
+                rows.append((t("label_status", "Durum"), result['velocity_status'], "", status_tag))
+
+                if 'alternatives' in result and result['alternatives']:
                     rows.append(("", "", ""))
-                    rows.append(("--- Alternatif Seçenekler ---", "", "", "warning"))
+                    title = t("label_alternative_options", "Alternatif Seçenekler")
+                    rows.append((f"--- {title} ---", "", "", "warning"))
                     for key, alt in result['alternatives'].items():
                         p_alt = alt['pipe']
                         rows.append((f"[★] {safe_text(alt['note'])}", f"{safe_text(p_alt['nominal'])}\" Sch {safe_text(p_alt['schedule'])}", ""))
                         if 'weight_per_m' in p_alt:
-                            rows.append((f"   ↳ Birim Ağırlık", safe_format(p_alt['weight_per_m'], ".2f"), "kg/m"))
+                            rows.append((f"   ↳ {t('unit_weight', 'Birim Ağırlık')}", safe_format(p_alt['weight_per_m'], ".2f"), "kg/m"))
                         if 'result' in alt and 'velocity_out' in alt['result']:
-                            rows.append((f"   ↳ Çıkış Hızı", safe_format(alt['result']['velocity_out'], ".2f"), "m/s"))
+                            rows.append((f"   ↳ {t('label_outlet_velocity', 'Çıkış Hızı')}", safe_format(alt['result']['velocity_out'], ".2f"), "m/s"))
             else:
-                rows.append(("Durum", "Uygun Boru Yok", "", "error"))
+                rows.append((t("label_status", "Durum"), t("label_no_pipe_found", "Uygun Boru Yok"), "", "error"))
 
         if 'm_dot' in result:
-             rows.append(("Kütlesel Debi", safe_format(result['m_dot'], ".4f"), "kg/s"))
+             rows.append((t("label_mass_flow", "Kütlesel Debi"), safe_format(result['m_dot'], ".4f"), "kg/s"))
 
         if 'phase_info' in result:
             phase_info = result['phase_info']
@@ -220,15 +205,15 @@ class GasFlowController:
                 'warning': 'warning',
                 'critical': 'error',
             }.get(phase_info.get('warning_level', 'ok'), '')
-            rows.append(("Akışkan Fazı", safe_text(phase_info.get('phase_label_tr', '-')), "", tag))
+            rows.append((t("label_fluid_phase", "Akışkan Fazı"), safe_text(phase_info.get('phase_label_tr', '-')), "", tag))
             vapor_quality = phase_info.get('vapor_quality')
             if vapor_quality is not None:
-                rows.append(("Buhar Kalitesi (Q)", safe_format(vapor_quality, ".3f"), "[-]"))
+                rows.append((t("label_vapor_quality", "Buhar Kalitesi (Q)"), safe_format(vapor_quality, ".3f"), "[-]"))
             formula_label = phase_info.get('formula_label_tr')
             if formula_label:
-                rows.append(("Formül Seti", safe_text(formula_label), ""))
+                rows.append((t("label_formula_set", "Formül Seti"), safe_text(formula_label), ""))
             transition_distance = phase_info.get('transition_to_two_phase_m')
             if transition_distance is not None:
-                rows.append(("İki Faz Geçişi", safe_format(transition_distance, ".2f"), "m", tag))
+                rows.append((t("label_two_phase_transition", "İki Faz Geçişi"), safe_format(transition_distance, ".2f"), "m", tag))
 
         return rows

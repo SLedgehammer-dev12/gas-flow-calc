@@ -158,33 +158,26 @@ class ValidatedEntry(ttk.Entry):
         self.bind('<Leave>', self._hide_error_tooltip)
         
     def _resolve_theme_colors(self):
-        """Aktif temaya göre renk paletini çözer."""
         app = self.winfo_toplevel()
         theme = getattr(app, "current_theme", "light")
-        theme_colors = getattr(app, '_colors', {
-            "bg": "#f0f3f8", "card": "#ffffff", "accent": "#1a237e", "accent2": "#283593",
-            "accent_light": "#e8eaf6", "txt_dark": "#1c2032", "txt_mid": "#455a64",
-            "txt_light": "#78909c", "success": "#2e7d32", "warn": "#e65100", "err": "#c62828",
-            "entry_bg": "white", "entry_fg": "black"
-        })
-        
-        # Hata renkleri
+        from theme_colors import get_theme_colors
+        palette = get_theme_colors(theme)
+
         if theme == "dark":
             err_bg = "#4c1c1c"
             err_fg = "#ff8a80"
-            normal_bg = theme_colors.get("entry_bg", "#1e1e24")
-            normal_fg = theme_colors.get("entry_fg", "#e2e2e9")
+            normal_bg = palette.get("entry_bg", "#1e1e24")
+            normal_fg = palette.get("entry_fg", "#e2e2e9")
         elif theme == "contrast":
             err_bg = "#ff0000"
             err_fg = "#ffffff"
-            normal_bg = theme_colors.get("entry_bg", "#000000")
-            normal_fg = theme_colors.get("entry_fg", "#ffffff")
+            normal_bg = palette.get("entry_bg", "#000000")
+            normal_fg = palette.get("entry_fg", "#ffffff")
         else:
             err_bg = "#ffe6e6"
-            err_fg = "#c62828"
-            normal_bg = theme_colors.get("entry_bg", "white")
-            normal_fg = theme_colors.get("entry_fg", "black")
-            
+            err_fg = palette.get("err", "#c62828")
+            normal_bg = palette.get("entry_bg", "white")
+            normal_fg = palette.get("entry_fg", "black")
         return normal_bg, normal_fg, err_bg, err_fg
 
     def _on_key_release(self, event=None):

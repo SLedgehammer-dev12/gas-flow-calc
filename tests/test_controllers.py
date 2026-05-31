@@ -149,11 +149,75 @@ class TestGasFlowController(unittest.TestCase):
         param_names = [row[0] for row in rows]
         self.assertIn("Maksimum Uzunluk", param_names)
         self.assertIn("Reynolds", param_names)
-        self.assertIn("Sürtünme Faktörü (f)", param_names)
-        self.assertIn("Giriş Hızı", param_names)
-        self.assertIn("Çıkış Hızı", param_names)
-        self.assertIn("Çıkış Basıncı", param_names)
+        self.assertIn("Surtunme Faktoru (f)", param_names)
+        self.assertIn("Giris Hizi", param_names)
+        self.assertIn("Cikis Hizi", param_names)
+        self.assertIn("Cikis Basinci", param_names)
 
     def test_get_results_table_data_empty_result(self):
         rows = self.controller.get_results_table_data(None, TARGET_PRESSURE_DROP, {})
         self.assertEqual(rows, [])
+
+    def test_prepare_inputs_negative_pressure_errors(self):
+        state = self._base_ui_state(p_in=-5)
+        inputs, errors = self.controller.prepare_inputs(state)
+        self.assertIsNotNone(errors)
+        self.assertIsNone(inputs)
+
+    def test_prepare_inputs_zero_flow_errors(self):
+        state = self._base_ui_state(flow_val=0)
+        inputs, errors = self.controller.prepare_inputs(state)
+        self.assertIsNotNone(errors)
+        self.assertIsNone(inputs)
+
+    def test_prepare_inputs_extreme_pressure_errors(self):
+        state = self._base_ui_state(p_in=1500)
+        inputs, errors = self.controller.prepare_inputs(state)
+        self.assertIsNotNone(errors)
+        self.assertIsNone(inputs)
+
+    def test_prepare_inputs_mass_percent_conversion(self):
+        state = self._base_ui_state(
+            comp_type="Kütle %",
+            gas_components={"METHANE": 0.9, "ETHANE": 0.1},
+        )
+        inputs, errors = self.controller.prepare_inputs(state)
+        self.assertIsNone(errors)
+        self.assertIsNotNone(inputs)
+        self.assertGreater(len(inputs["mole_fractions"]), 0)
+
+    def test_prepare_inputs_pressure_unit_conversions(self):
+        for p_unit, p_in_val in [("Barg", 10), ("Bara", 10), ("Psig", 100), ("Psia", 100)]:
+            state = self._base_ui_state(p_in=p_in_val, p_unit=p_unit)
+            inputs, errors = self.controller.prepare_inputs(state)
+            self.assertIsNone(errors)
+            self.assertGreater(inputs["P_in"], 0)
+
+    def test_prepare_inputs_temperature_unit_conversions(self):
+        for t_unit, t_val in [("°C", 25), ("°F", 77), ("K", 300)]:
+            state = self._base_ui_state(t_val=t_val, t_unit=t_unit)
+            inputs, errors = self.controller.prepare_inputs(state)
+            self.assertIsNone(errors)
+            self.assertGreater(inputs["T"], 0)
+
+    def test_get_results_table_data_with_phase_info(self):
+        result = {
+            "phase_info": {
+                "phase_label_tr": "Iki Fazli (Gaz + Sivi Karisimi)",
+                "warning_level": "critical",
+                "vapor_quality": 0.75,
+                "formula_label_tr": "Lockhart-Martinelli Iki Fazli Korelasyon",
+                "transition_to_two_phase_m": 150.0,
+            },
+            "P_out": 15e5,
+            "delta_p_total": 5e5,
+            "velocity_in": 10.0,
+            "velocity_out": 12.0,
+            "m_dot": 2.5,
+        }
+        state = self._base_ui_state()
+        rows = self.controller.get_results_table_data(result, TARGET_PRESSURE_DROP, state)
+        param_names = [row[0] for row in rows]
+        self.assertIn("Akiskan Fazi", param_names)
+        self.assertIn("Buhar Kalitesi (Q)", param_names)
+        self.assertIn("Kütlesel Debi", param_names)

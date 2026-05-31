@@ -8,6 +8,7 @@ _FLOW_MODE_ALIASES = {
     "incompressible": FLOW_MODE_INCOMPRESSIBLE,
     "sıkıştırılabilir": FLOW_MODE_COMPRESSIBLE,
     "sıkıştırılamaz": FLOW_MODE_INCOMPRESSIBLE,
+    # Deprecated: legacy UTF-8/Latin-1 encoding fallbacks — remove after v6.6
     "sÄ±kÄ±ÅŸtÄ±rÄ±labilir": FLOW_MODE_COMPRESSIBLE,
     "sÄ±kÄ±ÅŸtÄ±rÄ±lamaz": FLOW_MODE_INCOMPRESSIBLE,
 }

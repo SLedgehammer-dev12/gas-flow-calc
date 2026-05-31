@@ -1,8 +1,101 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.4.0"
-
+APP_VERSION = "6.6.0"
 
 RELEASE_NOTES = {
+    "6.6.0": {
+        "tr": """6.6.0 ile gelen baslica yenilikler:
+
+CAPIK PLATFORM DESTEGI:
+- Ilk resmi macOS surumu (DMG kalibi olarak dagitiliyor)
+- macOS ve Windows icin ayri PyInstaller spec dosyalari
+- GitHub Actions'da paralel Windows + macOS build
+
+KALITE & TEST:
+- Toplam 247 teste ulasildi (onceki: 173)
+- Kod kapsamasi %65'e yukseltildi (onceki: %58)
+- controllers.py: %96, reporting.py: %97
+- Servis modulleri (progress, project_io, report_service) test kapsamina alindi
+
+GERIYE UYUMLULUK:
+- Uygulama veri dizini stabil hale getirildi ("Gas Flow Calc V6.1" -> "Gas Flow Calc")
+- Eski dizinden config/token/session otomatik tasinir
+- Eski proje JSON dosyalari sorunsuz acilir
+- XOR sifrelenmis token'lar Fernet/DPAPI gecisinde okunmaya devam eder
+- HMAC imzali lockout state geriye uyumlu calisir
+
+GUNCELLEME AKISI:
+- Release'lerde hem .exe (yeni kurulum) hem source ZIP (in-app guncelleme) sunulur
+- config.json guncelleme sirasinda korunur
+""",
+        "en": """Highlights introduced in 6.6.0:
+
+CROSS-PLATFORM SUPPORT:
+- First official macOS release (distributed as DMG)
+- Separate PyInstaller spec files for macOS and Windows
+- Parallel Windows + macOS builds in GitHub Actions
+
+QUALITY & TESTING:
+- Expanded to 247 tests (previously 173)
+- Code coverage increased to 65% (previously 58%)
+- controllers.py: 96%, reporting.py: 97%
+- Service-layer modules (progress, project_io, report_service) now tested
+
+BACKWARD COMPATIBILITY:
+- App data directory stabilized ("Gas Flow Calc V6.1" -> "Gas Flow Calc")
+- Config/token/session auto-migrated from legacy directory
+- Old project JSON files load without issues
+- XOR-encrypted tokens still decodable after Fernet/DPAPI migration
+- HMAC-signed lockout state remains backward compatible
+
+UPDATE FLOW:
+- Both .exe (fresh install) and source ZIP (in-app update) provided in releases
+- config.json preserved during in-app updates
+""",
+    },
+    "6.5.0": {
+        "tr": """6.5.0 ile gelen baslica yenilikler:
+
+MIMARI:
+- calculations.py 1901 satirdan ~1017 satira bolundu (eos/, flow/, pipe/, thermo/ alt modulleri)
+- main.py ~1148 satirdan ~870 satira bolundu (services/ modulleri)
+- Renk paletleri theme_colors.py'de merkezilesti
+
+KOD KALITESI:
+- Tum sabit Turkce metinler t() cagrisina donusturuldu
+- Yinelenen populate_results_table mantigi controllers.py'ye devredildi
+- Dialog pencereleri _show_scrolled_dialog fabrikasinda birlestirildi
+
+HESAP DOGRULUGU:
+- fluids kutuphanesi ile Churchill surtunme faktoru capraz dogrulandi (< %2 sapma)
+- thermo kutuphanesi ile MW, kritik ozellik ve yogunluk dogrulandi
+- pygerg (GERG-88) ile sikistirilabilirlik dogrulandi
+
+TEST:
+- Toplam 173 teste ulasildi (+41 yeni test)
+- state_manager (%26 → %69) ve ui/dialogs (%22 → %94) kapsamasi iyilestirildi
+""",
+        "en": """Highlights introduced in 6.5.0:
+
+ARCHITECTURE:
+- calculations.py split from 1901 to ~1017 lines (eos/, flow/, pipe/, thermo/ sub-modules)
+- main.py split from ~1148 to ~870 lines (services/ modules)
+- Color palettes centralized in theme_colors.py
+
+CODE QUALITY:
+- All hardcoded Turkish strings converted to t() translation calls
+- Duplicate populate_results_table logic delegated to controllers.py
+- Dialog windows consolidated via _show_scrolled_dialog factory
+
+CALCULATION ACCURACY:
+- Churchill friction factor cross-validated against fluids library (< 2% deviation)
+- MW, critical properties, and density validated against thermo library
+- Compressibility factor cross-validated against pygerg (GERG-88 standard)
+
+TESTING:
+- Expanded to 173 tests (+41 new)
+- Coverage improved: state_manager (26% → 69%), ui/dialogs (22% → 94%)
+""",
+    },
     "6.4.0": {
         "tr": """6.4.0 ile gelen baslica yenilikler:
 

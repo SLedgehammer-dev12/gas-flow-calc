@@ -1,5 +1,8 @@
 import hashlib
 import hmac
+import json
+import os
+import re
 import secrets
 import time
 import tkinter as tk
@@ -12,7 +15,8 @@ from translations import get_language, t
 PBKDF2_ITERATIONS = 200_000
 ADMIN_HASH_KEY = "auth_admin_password_hash"
 PROGRAM_HASH_KEY = "auth_program_password_hash"
-MIN_PASSWORD_LENGTH = 4
+LOCKOUT_STATE_KEY = "auth_lockout_state"
+MIN_PASSWORD_LENGTH = 8
 MAX_BRUTE_FORCE_ATTEMPTS = 5
 BRUTE_FORCE_DELAY_SECONDS = 30
 
@@ -60,6 +64,18 @@ def validate_password_strength(password):
             f"Sifre en az {MIN_PASSWORD_LENGTH} karakter olmalidir.",
             f"Password must be at least {MIN_PASSWORD_LENGTH} characters.",
         )
+    if not re.search(r"[A-Z\u00C0-\u00DC]", password):
+        return False, _msg(
+            "auth_weak_uppercase",
+            "Sifre en az bir buyuk harf icermelidir.",
+            "Password must contain at least one uppercase letter.",
+        )
+    if not re.search(r"[0-9]", password):
+        return False, _msg(
+            "auth_weak_digit",
+            "Sifre en az bir rakam icermelidir.",
+            "Password must contain at least one digit.",
+        )
     return True, ""
 
 
@@ -73,10 +89,62 @@ def update_passwords(admin_password: str | None = None, program_password: str | 
     return config
 
 
-_lockout_state = {
-    "program": {"attempts": 0, "locked_until": 0.0},
-    "admin": {"attempts": 0, "locked_until": 0.0},
-}
+def _lockout_hmac_key() -> bytes:
+    host = os.uname().nodename if hasattr(os, "uname") else os.environ.get("COMPUTERNAME", "unknown")
+    user = os.environ.get("USER", os.environ.get("USERNAME", "unknown"))
+    seed = f"{host}::{user}::GasFlowCalcLockout".encode("utf-8")
+    return hashlib.pbkdf2_hmac("sha256", seed, b"auth-lockout-hmac-v1", iterations=200_000)
+
+
+def _lockout_sign(data: dict) -> dict:
+    serialized = json.dumps(data, separators=(",", ":"), sort_keys=True)
+    key = _lockout_hmac_key()
+    sig = hmac.new(key, serialized.encode("utf-8"), "sha256").hexdigest()
+    return {"data": data, "hmac": sig}
+
+
+def _lockout_verify(signed: dict) -> dict | None:
+    try:
+        data = signed.get("data")
+        expected_sig = signed.get("hmac", "")
+        serialized = json.dumps(data, separators=(",", ":"), sort_keys=True)
+        key = _lockout_hmac_key()
+        actual_sig = hmac.new(key, serialized.encode("utf-8"), "sha256").hexdigest()
+        if hmac.compare_digest(actual_sig, expected_sig):
+            return data
+    except Exception:
+        pass
+    return None
+
+
+def _load_lockout_state():
+    empty_state = {"program": {"attempts": 0, "locked_until": 0.0},
+                   "admin": {"attempts": 0, "locked_until": 0.0}}
+    try:
+        config = load_config()
+        raw = config.get(LOCKOUT_STATE_KEY)
+        if isinstance(raw, dict) and "hmac" in raw:
+            verified = _lockout_verify(raw)
+            if verified is not None:
+                return verified
+        if isinstance(raw, dict) and "hmac" not in raw:
+            return raw
+        return empty_state
+    except Exception:
+        return empty_state
+
+
+def _save_lockout_state(state):
+    try:
+        config = load_config()
+        signed = _lockout_sign(state)
+        config[LOCKOUT_STATE_KEY] = signed
+        save_config(config)
+    except Exception:
+        pass
+
+
+_lockout_state = _load_lockout_state()
 
 
 def _check_and_update_lockout(parent, key: str) -> bool:
@@ -117,6 +185,7 @@ def prompt_for_program_access(parent) -> bool:
         if verify_password(password, config[PROGRAM_HASH_KEY]):
             _lockout_state["program"]["attempts"] = 0
             _lockout_state["program"]["locked_until"] = 0.0
+            _save_lockout_state(_lockout_state)
             return True
 
         state = _lockout_state["program"]
@@ -124,6 +193,7 @@ def prompt_for_program_access(parent) -> bool:
         if state["attempts"] >= MAX_BRUTE_FORCE_ATTEMPTS:
             state["locked_until"] = time.time() + BRUTE_FORCE_DELAY_SECONDS
             state["attempts"] = 0
+            _save_lockout_state(_lockout_state)
             locked_text = _msg(
                 "auth_locked",
                 f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",
@@ -182,6 +252,7 @@ def prompt_for_admin_password(parent) -> bool:
         if verify_password(password, config[ADMIN_HASH_KEY]):
             _lockout_state["admin"]["attempts"] = 0
             _lockout_state["admin"]["locked_until"] = 0.0
+            _save_lockout_state(_lockout_state)
             return True
 
         state = _lockout_state["admin"]
@@ -189,6 +260,7 @@ def prompt_for_admin_password(parent) -> bool:
         if state["attempts"] >= MAX_BRUTE_FORCE_ATTEMPTS:
             state["locked_until"] = time.time() + BRUTE_FORCE_DELAY_SECONDS
             state["attempts"] = 0
+            _save_lockout_state(_lockout_state)
             locked_text = _msg(
                 "auth_locked",
                 f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",

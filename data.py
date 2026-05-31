@@ -38,6 +38,30 @@ GAS_PRESETS = {
         "METHANE": 80.0, "ETHANE": 10.0, "PROPANE": 5.0,
         "BUTANE": 3.0, "CARBONDIOXIDE": 2.0
     },
+    "Gulf Coast NG": {
+        "METHANE": 93.2, "ETHANE": 3.5, "PROPANE": 1.0,
+        "BUTANE": 0.4, "NITROGEN": 1.4, "CARBONDIOXIDE": 0.5
+    },
+    "North Sea NG": {
+        "METHANE": 85.0, "ETHANE": 8.0, "PROPANE": 3.5,
+        "BUTANE": 1.5, "PENTANE": 0.5, "NITROGEN": 1.0, "CARBONDIOXIDE": 0.5
+    },
+    "Russian Pipeline": {
+        "METHANE": 98.0, "ETHANE": 0.7, "PROPANE": 0.3,
+        "NITROGEN": 0.8, "CARBONDIOXIDE": 0.2
+    },
+    "High CO2 NG": {
+        "METHANE": 75.0, "ETHANE": 5.0, "PROPANE": 3.0,
+        "CARBONDIOXIDE": 15.0, "NITROGEN": 2.0
+    },
+    "High N2 NG": {
+        "METHANE": 80.0, "ETHANE": 3.0, "PROPANE": 2.0,
+        "NITROGEN": 14.0, "CARBONDIOXIDE": 1.0
+    },
+    "LNG Lean": {
+        "METHANE": 96.0, "ETHANE": 2.5, "PROPANE": 0.5,
+        "NITROGEN": 1.0
+    },
 }
 
 # Boru Malzemeleri ve SMYS (MPa)

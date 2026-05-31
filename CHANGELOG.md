@@ -1,5 +1,51 @@
 # Changelog
 
+## 6.6.0
+
+### Cross-Platform Support
+- **First official macOS release**: Built with PyInstaller, packaged as DMG.
+- **Separate PyInstaller specs**: `(Windows).spec` and `(macOS).spec` for platform-specific builds.
+- **Dual CI pipeline**: GitHub Actions builds both Windows EXE and macOS DMG in parallel.
+
+### Quality & Testing
+- Test count expanded to **247 tests** (+74 from 6.5.0, +94 from 6.4.0).
+- Code coverage increased to **65%** (was 58%).
+- New test files: `test_coverage_phase1.py` (23 tests), `test_coverage_phase2.py` (17 tests), `test_services.py` (28 tests).
+- Pure-logic modules brought to 100% coverage: `eos/solver`, `pipe/selector`, `theme_colors`, `flow/utils`, `flow_utils`, `target_utils`, `release_metadata`, `translations`, `services/project_io`, `services/report_service`, `ui/dialogs`.
+- Service modules now tested: progress (98%), report_service (100%), project_io (100%).
+
+### Backward Compatibility
+- App data directory stabilized to `"Gas Flow Calc"` (no version number), with automatic one-time migration from legacy `"Gas Flow Calc V6.1"` directory.
+- Token encryption fallback chain preserved (XOR → Fernet → DPAPI).
+- HMAC lockout backward compatibility maintained.
+- Old project JSON files load correctly via defensive `data.get()` patterns.
+
+### Update Flow
+- Release assets now include both standalone `.exe` and source `.zip` for in-app updates.
+- `config.json` is preserved during zip-based updates via `exclude_on_apply`.
+
+## 6.5.0
+
+### Architecture
+- **calculations.py split**: Extracted EOS solver, friction factor, viscosity, phase detection, pipe selection, and thermo helpers into dedicated modules (`eos/`, `flow/`, `pipe/`, `thermo/`, `phase/`). Reduced from 1901 to ~1017 lines.
+- **main.py split**: Extracted progress rendering, update checking, report generation, and project I/O into `services/` modules. Reduced from ~1148 to ~870 lines.
+- **Theme color centralization**: Created `theme_colors.py` as the single color palette source, eliminating scattered color references in graphs, schematic, and widgets.
+
+### Code Quality
+- **Hardcoded Turkish strings removed**: All validation messages, result labels, dialog titles, and log messages now use `t()` calls backed by translation dictionaries (controllers.py, reporting.py, gas_panel.py, main.py).
+- **Duplicate logic merged**: `main.py:populate_results_table` now delegates to `controllers.py:get_results_table_data`, eliminating duplicate label/formatting logic.
+- **Dialog deduplication**: `show_user_guide` and `show_program_details` refactored into `_show_scrolled_dialog` factory.
+
+### Calculation Accuracy
+- **fluids library cross-validation**: Added tests comparing Churchill friction factor against `fluids.friction_factor` (max 2% deviation across 56 Re/roughness combos).
+- **thermo library cross-check**: Added MW, critical property, and density validation against the `thermo` Chemical database.
+- **GERG-88/SGERG validation**: Added compressibility factor cross-validation against `pygerg` (GERG-88 standard) for typical natural gas compositions at various pressures.
+
+### Testing & Infrastructure
+- Test coverage expanded to **173 tests** (+41 new).
+- Added tests for `state_manager.py` (26% → 69% coverage) and `ui/dialogs.py` (22% → 94% coverage).
+- `.coveragerc` isolates coverage measurement (excludes test files).
+
 ## 6.4.0
 
 ### UI & UX

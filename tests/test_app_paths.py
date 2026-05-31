@@ -29,7 +29,7 @@ class TestAppPaths(unittest.TestCase):
         with self._patch_env():
             d = app_paths.get_app_data_dir()
             self.assertTrue(os.path.isdir(d))
-            self.assertIn("Gas Flow Calc V6.1", d)
+            self.assertIn("Gas Flow Calc", d)
 
     def test_get_config_path_in_app_data(self):
         with self._patch_env():

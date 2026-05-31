@@ -1,41 +1,46 @@
 # RELEASE
 
-## Patch Release Checklist
+## Release Checklist — v6.6.0
 
-### Hedef patch
-
-- Onerilen patch: `v6.3.0`
-- Kapsam:
-  - AGA-8 termodinamik modelleri (GERG-2008 ve DETAIL)
-  - Admin bruteforce kilidi ve token DPAPI şifrelemesi
-  - Sürtünme faktörü Colebrook -> Churchill explicit geçişi
-  - UI-Hesaplama senkronizasyonu ve Minimum Çap / Maksimum Uzunluk iyileştirmeleri
+### Kapsam
+- Cross-platform: Windows EXE + macOS DMG
+- Code coverage: 58% → 65% (247 tests)
+- Backward compatible config migration
+- Python 3.13
 
 ### Versioning
 
-- `release_metadata.py` icinde surumu guncelle
-- `CHANGELOG.md` icine patch notlarini ekle
-- Gerekirse paket adi ve splash/version metinlerini kontrol et
+- [ ] `release_metadata.py`: `APP_VERSION = "6.6.0"` ✅
+- [ ] `version_info.txt`: `filevers=(6,6,0,0)`, `FileVersion=6.6.0` ✅
+- [ ] `CHANGELOG.md`: 6.6.0 başlığı eklendi ✅
+- [ ] `README.md`: versiyon güncellendi ✅
+- [ ] `app_paths.py`: `APP_DIR_NAME = "Gas Flow Calc"` + migration ✅
 
 ### Validation
 
-- `python -m unittest discover -s tests -v`
-- `python main.py`
-- Asagidaki manuel senaryolari dogrula:
-  - ayni fiziksel debi icin `Sm3/h` ve `kg/s` ile esit sonuclar
-  - maksimum uzunlukta pozitif, mantikli bir sonuc
-  - fitting kaybi cok yuksekse acik hata mesaji
-  - varsayilan hedef ve segmented button durumu
+- [ ] `python3 -m pytest tests/ -q --tb=short` (247 test)
+- [ ] `python3 main.py` (manuel başlatma)
+- [ ] macOS local build: `pyinstaller "Gas Flow Calc V6.6 (macOS).spec" --clean`
+- [ ] macOS DMG: `hdiutil create ... Gas_Flow_Calc_V6.6.0.dmg`
+- [ ] Manuel senaryolar:
+  - Sm³/h ve kg/s ile eşit fiziksel sonuçlar
+  - Maksimum uzunlukta pozitif sonuç
+  - Min çap seçimi + alternatifler
+  - Tema geçişi (light/dark)
+- [ ] Eski config migration: var olan `Gas Flow Calc V6.1\config.json` → yeni dizine taşınır
 
 ### Packaging
 
-- `pyinstaller "Gas Flow Calc V6.1.spec"`
-- cikti `.exe` adini ve surum bilgisini dogrula
-- paketli surumde hizli smoke test yap
+- [ ] `Gas Flow Calc V6.6 (Windows).spec` — PyInstaller
+- [ ] `Gas Flow Calc V6.6 (macOS).spec` — PyInstaller
+- [ ] CI workflow: `.github/workflows/build-release.yml`
+- [ ] Source ZIP: `git archive --format=zip ...`
 
 ### Publishing
 
-- commit mesajinda patch kapsamini acik yaz
-- release tag olustur
-- release notlarinda bu hata icin kullaniciya etkisini belirt:
-  - maksimum uzunluk artik volumetrik debiyi dogru yorumluyor
+1. `git add -A && git commit -m "v6.6.0: cross-platform release"`
+2. `git tag -a v6.6.0 -m "Gas Flow Calc v6.6.0"`
+3. `gh release create v6.6.0 --title "Gas Flow Calc v6.6.0" --notes-file RELEASE_NOTES.md`
+4. `git push origin main --tags`
+5. CI çalışmasını bekle (Windows EXE + macOS DMG + source ZIP)
+6. Release sayfasında SHA-256 checksum'larını doğrula

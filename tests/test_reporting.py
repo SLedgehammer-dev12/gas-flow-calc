@@ -81,8 +81,8 @@ def test_max_length_report_includes_outlet_properties():
     assert "Maksimum Uzunluk" in report
     assert "AKISKAN OZELLIKLERI (GIRIS PT)" in report
     assert "AKISKAN OZELLIKLERI (CIKIS PT)" in report
-    assert "Akis Hizi (Giris): 1.50 m/s" in report
-    assert "Akis Hizi (Cikis): 1.80 m/s" in report
+    assert "Giris Hizi: 1.50 m/s" in report
+    assert "Cikis Hizi: 1.80 m/s" in report
     assert "Cikis Basinci: 6.5000 bara" in report
     assert "Surtunme Faktoru (f): 0.02100" in report
 

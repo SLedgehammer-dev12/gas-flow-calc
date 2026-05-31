@@ -36,10 +36,23 @@ class TestAuthConfig(unittest.TestCase):
     def test_password_strength_rejects_short_passwords(self):
         valid, msg = validate_password_strength("ab")
         self.assertFalse(valid)
-        self.assertIn("4 karakter", msg)
+        self.assertIn("8 karakter", msg)
 
-        valid, msg = validate_password_strength("abcd")
-        self.assertTrue(valid)
+        valid, msg = validate_password_strength("abcdefgh")
+        self.assertFalse(valid)  # 8 chars but no uppercase/digit
+
+        valid, msg = validate_password_strength("Abcd3fgh")
+        self.assertTrue(valid)  # Has uppercase + digit + 8 chars
+
+    def test_password_strength_requires_complexity(self):
+        valid, msg = validate_password_strength("abcdefgh")
+        self.assertFalse(valid)  # No uppercase, no digit
+
+        valid, msg = validate_password_strength("Abcdefgh")
+        self.assertFalse(valid)  # Has uppercase, no digit
+
+        valid, msg = validate_password_strength("Abcd3fgh")
+        self.assertTrue(valid)  # Has uppercase + digit + 8 chars
 
     def test_admin_and_program_passwords_can_be_updated_independently(self):
         with tempfile.TemporaryDirectory() as temp_dir:

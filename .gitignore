@@ -28,5 +28,10 @@ build_release/
 .DS_Store
 Thumbs.db
 
-# Build temp folder
+# Local app data dir (runtime-created)
+/Gas Flow Calc/
 /Gas Flow Calc V6.1/
+
+# Coverage
+.coverage
+*.dmg
