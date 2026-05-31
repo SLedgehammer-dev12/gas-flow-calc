@@ -48,13 +48,14 @@ jobs:
       - name: Calculate SHA256 checksums
         shell: bash
         run: |
-          EXE_FILE=$(find dist -name "*.exe" -type f 2>/dev/null | head -n 1)
-          if [ -f "$EXE_FILE" ]; then
-            echo "SHA256_WIN_EXE=$(sha256sum "$EXE_FILE" | cut -d' ' -f1)" >> $GITHUB_ENV
-          fi
-          ZIP_FILE="Gas_Flow_Calc_V6.6.0_source.zip"
-          if [ -f "$ZIP_FILE" ]; then
-            echo "SHA256_WIN_ZIP=$(sha256sum "$ZIP_FILE" | cut -d' ' -f1)" >> $GITHUB_ENV
+          for f in dist/*.exe; do
+            if [ -f "$f" ]; then
+              echo "SHA256_WIN_EXE=$(sha256sum "$f" | cut -d' ' -f1)" >> $GITHUB_ENV
+              break
+            fi
+          done
+          if [ -f "Gas_Flow_Calc_V6.6.0_source.zip" ]; then
+            echo "SHA256_WIN_ZIP=$(sha256sum Gas_Flow_Calc_V6.6.0_source.zip | cut -d' ' -f1)" >> $GITHUB_ENV
           fi
 
       - name: Upload to GitHub Release
@@ -62,9 +63,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          EXE_FILE=$(find dist -name "*.exe" -type f 2>/dev/null | head -n 1)
-          ZIP_FILE="Gas_Flow_Calc_V6.6.0_source.zip"
-
           TAG_NAME=""
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TAG_NAME="${GITHUB_REF#refs/tags/}"
@@ -74,12 +72,24 @@ jobs:
             TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.6.0")
           fi
 
+          EXE_FILE=""
+          for f in dist/*.exe; do
+            [ -f "$f" ] && EXE_FILE="$f" && break
+          done
+          ZIP_FILE="Gas_Flow_Calc_V6.6.0_source.zip"
+
           ASSETS=""
-          [ -f "$EXE_FILE" ] && ASSETS="$EXE_FILE"
+          [ -n "$EXE_FILE" ] && ASSETS="$ASSETS \"$EXE_FILE\""
           [ -f "$ZIP_FILE" ] && ASSETS="$ASSETS $ZIP_FILE"
 
           if [ -n "$ASSETS" ]; then
-            gh release upload "$TAG_NAME" $ASSETS --clobber
+            # Upload each asset separately to handle spaces in filenames
+            if [ -n "$EXE_FILE" ]; then
+              gh release upload "$TAG_NAME" "$EXE_FILE" --clobber
+            fi
+            if [ -f "$ZIP_FILE" ]; then
+              gh release upload "$TAG_NAME" "$ZIP_FILE" --clobber
+            fi
           fi
 
   build-macos:
@@ -100,7 +110,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
+          pip install -r requirements.txt pyinstaller pyaga8
 
       - name: Run test suite
         run: |
