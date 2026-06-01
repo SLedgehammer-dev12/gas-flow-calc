@@ -1,7 +1,53 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.6.0"
+APP_VERSION = "6.7.0"
 
 RELEASE_NOTES = {
+    "6.7.0": {
+        "tr": """6.7.0 ile gelen baslica yenilikler:
+
+TEK KULLANICI GIRIS SISTEMI:
+- Admin kullanici adi + sifre ile giris (varsayilan: admin / 123456)
+- Login dialog pencere acilmadan once giris ister
+- Admin panelden kullanici adi ve sifre degistirilebilir
+
+GELISMIS BRUTE FORCE KORUMASI:
+- Exponential backoff: 5 basarisiz deneme -> 30sn, sonra 60sn, 120sn, 240sn, 480sn, 24 saat
+- Yapay 1 saniye gecikme: her basarisiz denemede otomatik yavaslatma
+- HMAC imzali lockout state config'te persist edilir
+- Kullanici adi enumeration engelleme (case-insensitive, constant-time karsilastirma)
+- Maksimum 6 lockout cycle -> 24 saat kesin kilit
+
+PLATFORM DESTEGI:
+- macOS config yolu ~/Library/Application Support/Gas Flow Calc/ olarak duzeltildi
+- Artik config .app paketi icine degil, dogru macOS konumuna yazilir
+
+GERIYE UYUMLULUK:
+- Eski config'te auth_admin_password_hash varsa auth_admin_username otomatik eklenir (admin)
+- Eski lockout state'te "program" key'i varsa "login" e otomatik donusur
+""",
+        "en": """Highlights introduced in 6.7.0:
+
+SINGLE USER LOGIN SYSTEM:
+- Admin login with username + password (default: admin / 123456)
+- Login dialog appears before the main window
+- Admin can change username and password from the menu
+
+ADVANCED BRUTE FORCE PROTECTION:
+- Exponential backoff: 5 failed attempts -> 30s, then 60s, 120s, 240s, 480s, 24 hours
+- Artificial 1-second delay on each failed login attempt
+- HMAC-signed lockout state persisted in config.json
+- Username enumeration prevention (case-insensitive, constant-time comparison)
+- Maximum 6 lockout cycles -> 24-hour hard lock
+
+PLATFORM SUPPORT:
+- macOS config path fixed to ~/Library/Application Support/Gas Flow Calc/
+- Config now written to the correct macOS location, not inside the .app bundle
+
+BACKWARD COMPATIBILITY:
+- Migrates existing auth_admin_password_hash by adding auth_admin_username = "admin"
+- Migrates old "program" lockout key to "login" transparently
+""",
+    },
     "6.6.0": {
         "tr": """6.6.0 ile gelen baslica yenilikler:
 

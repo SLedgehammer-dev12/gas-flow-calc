@@ -9,7 +9,13 @@ _LEGACY_APP_DIR_NAMES = ["Gas Flow Calc V6.1"]
 
 
 def get_app_data_base_dir():
-    return os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA") or get_install_dir()
+    local = os.environ.get("LOCALAPPDATA")
+    appdata = os.environ.get("APPDATA")
+    if local or appdata:
+        return local or appdata
+    if sys.platform == "darwin":
+        return os.path.join(os.path.expanduser("~"), "Library", "Application Support")
+    return get_install_dir()
 
 
 def get_install_dir():

@@ -12,7 +12,7 @@ import webbrowser
 import sys
 
 # Modüler importlar
-from auth import load_auth_config, prompt_for_admin_password, prompt_for_program_access, show_password_management_dialog
+from auth import load_auth_config, prompt_for_admin_password, prompt_for_login, show_password_management_dialog
 from app_paths import get_config_path, get_install_dir, get_session_file_path, load_config, save_config
 from constants import convert_pressure_to_pa, convert_temperature_to_k
 from release_metadata import APP_VERSION, get_release_notes, get_release_notes_title, get_versioned_exe_name
@@ -246,6 +246,8 @@ class GasFlowCalculatorApp:
         # Yardım Menüsü
         help_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label=t("menu_help"), menu=help_menu)
+        help_menu.add_command(label=t("menu_user_settings"), command=self.open_user_settings)
+        help_menu.add_separator()
         help_menu.add_command(label=t("menu_user_guide"), command=self.show_user_guide)
         help_menu.add_command(label=t("program_details_title"), command=self.show_program_details)
         help_menu.add_separator()
@@ -297,6 +299,15 @@ class GasFlowCalculatorApp:
     
     def show_program_details(self):
         show_program_details(self.root)
+
+    def open_user_settings(self):
+        self.root.after(100, self._do_open_user_settings)
+
+    def _do_open_user_settings(self):
+        if not prompt_for_admin_password(self.root):
+            return
+        if show_password_management_dialog(self.root):
+            self.log_message("Kullanici ayarlari guncellendi / User settings updated", level="INFO")
 
     def validate_float(self, event):
         """Eski stil doğrulama - geriye uyumluluk için korundu."""
@@ -856,7 +867,7 @@ class GasFlowCalculatorApp:
 if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
-    if not prompt_for_program_access(root):
+    if not prompt_for_login(root):
         root.destroy()
         sys.exit(0)
     root.deiconify()

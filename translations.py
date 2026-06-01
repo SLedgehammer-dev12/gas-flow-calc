@@ -258,6 +258,7 @@ TRANSLATIONS = {
         
         # Menu - Help
         "menu_help": "Yardım",
+        "menu_user_settings": "Kullanıcı Ayarları...",
         "menu_user_guide": "Kullanım Kılavuzu",
         "menu_about": "Hakkında",
         
@@ -761,6 +762,7 @@ REFERANSLAR:
         
         # Menu - Help
         "menu_help": "Help",
+        "menu_user_settings": "User Settings...",
         "menu_user_guide": "User Guide",
         "menu_about": "About",
         

@@ -13,12 +13,17 @@ from translations import get_language, t
 
 
 PBKDF2_ITERATIONS = 200_000
+ADMIN_USERNAME_KEY = "auth_admin_username"
 ADMIN_HASH_KEY = "auth_admin_password_hash"
-PROGRAM_HASH_KEY = "auth_program_password_hash"
 LOCKOUT_STATE_KEY = "auth_lockout_state"
 MIN_PASSWORD_LENGTH = 8
 MAX_BRUTE_FORCE_ATTEMPTS = 5
-BRUTE_FORCE_DELAY_SECONDS = 30
+BRUTE_FORCE_BASE_DELAY = 30
+BRUTE_FORCE_MAX_DELAY = 86400
+ARTIFICIAL_LOGIN_DELAY = 1.0
+MAX_LOCKOUT_CYCLES = 6
+DEFAULT_ADMIN_USERNAME = "admin"
+DEFAULT_ADMIN_PASSWORD = "123456"
 
 
 def _msg(key: str, tr_default: str, en_default: str) -> str:
@@ -48,16 +53,37 @@ def verify_password(password: str, stored_value: str) -> bool:
         return False
 
 
-def load_auth_config():
+def _load_auth_config():
     return load_config()
 
 
-def is_first_run():
-    config = load_auth_config()
-    return ADMIN_HASH_KEY not in config or PROGRAM_HASH_KEY not in config
+def _ensure_default_admin() -> dict:
+    """Create default admin/123456 credentials if none exist."""
+    config = _load_auth_config()
+    changed = False
+    if ADMIN_USERNAME_KEY not in config:
+        config[ADMIN_USERNAME_KEY] = hash_password(DEFAULT_ADMIN_USERNAME)
+        changed = True
+    if ADMIN_HASH_KEY not in config:
+        config[ADMIN_HASH_KEY] = hash_password(DEFAULT_ADMIN_PASSWORD)
+        changed = True
+    if changed:
+        save_config(config)
+    return config
 
 
-def validate_password_strength(password):
+def hash_username(username: str, salt: bytes | None = None) -> str:
+    salt = salt or secrets.token_bytes(16)
+    normalized = username.lower().strip()
+    digest = hashlib.pbkdf2_hmac("sha256", normalized.encode("utf-8"), salt, PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt.hex()}${digest.hex()}"
+
+
+def verify_username(username: str, stored_value: str) -> bool:
+    return verify_password(username.lower().strip(), stored_value)
+
+
+def validate_password_strength(password: str):
     if len(password) < MIN_PASSWORD_LENGTH:
         return False, _msg(
             "auth_weak_short",
@@ -79,13 +105,18 @@ def validate_password_strength(password):
     return True, ""
 
 
-def update_passwords(admin_password: str | None = None, program_password: str | None = None):
-    config = load_auth_config()
-    if admin_password is not None:
-        config[ADMIN_HASH_KEY] = hash_password(admin_password)
-    if program_password is not None:
-        config[PROGRAM_HASH_KEY] = hash_password(program_password)
-    save_config(config)
+def update_admin_credentials(new_username: str | None = None, new_password: str | None = None) -> dict:
+    """Update admin username and/or password in config."""
+    config = _load_auth_config()
+    changed = False
+    if new_username is not None:
+        config[ADMIN_USERNAME_KEY] = hash_username(new_username)
+        changed = True
+    if new_password is not None:
+        config[ADMIN_HASH_KEY] = hash_password(new_password)
+        changed = True
+    if changed:
+        save_config(config)
     return config
 
 
@@ -117,24 +148,36 @@ def _lockout_verify(signed: dict) -> dict | None:
     return None
 
 
+def _migrate_lockout_state(raw: dict) -> dict:
+    """Migrate old 'program' key to 'login' and ensure all keys exist."""
+    if "program" in raw and "login" not in raw:
+        raw["login"] = raw.pop("program")
+    for key in ("login", "admin"):
+        entry = raw.setdefault(key, {})
+        entry.setdefault("attempts", 0)
+        entry.setdefault("locked_until", 0.0)
+        entry.setdefault("lockout_cycles", 0)
+        entry.setdefault("total_attempts", 0)
+    return raw
+
+
 def _load_lockout_state():
-    empty_state = {"program": {"attempts": 0, "locked_until": 0.0},
-                   "admin": {"attempts": 0, "locked_until": 0.0}}
+    empty_state = _migrate_lockout_state({})
     try:
         config = load_config()
         raw = config.get(LOCKOUT_STATE_KEY)
         if isinstance(raw, dict) and "hmac" in raw:
             verified = _lockout_verify(raw)
             if verified is not None:
-                return verified
+                return _migrate_lockout_state(verified)
         if isinstance(raw, dict) and "hmac" not in raw:
-            return raw
+            return _migrate_lockout_state(raw)
         return empty_state
     except Exception:
         return empty_state
 
 
-def _save_lockout_state(state):
+def _save_lockout_state(state: dict):
     try:
         config = load_config()
         signed = _lockout_sign(state)
@@ -147,88 +190,196 @@ def _save_lockout_state(state):
 _lockout_state = _load_lockout_state()
 
 
+def _get_lockout_duration(lockout_cycles: int) -> int:
+    """Exponential backoff: 30s, 60s, 120s, 240s, 480s, then 86400s."""
+    if lockout_cycles >= MAX_LOCKOUT_CYCLES:
+        return BRUTE_FORCE_MAX_DELAY
+    if lockout_cycles <= 0:
+        return BRUTE_FORCE_BASE_DELAY
+    duration = BRUTE_FORCE_BASE_DELAY * (2 ** (lockout_cycles - 1))
+    return min(duration, BRUTE_FORCE_MAX_DELAY)
+
+
 def _check_and_update_lockout(parent, key: str) -> bool:
     state = _lockout_state[key]
     now = time.time()
     if now < state["locked_until"]:
         remaining = int(state["locked_until"] - now)
-        locked_text = _msg(
-            "auth_locked",
-            f"Cok fazla hatali deneme. {remaining} saniye bekleyin.",
-            f"Too many failed attempts. Please wait {remaining} seconds.",
-        )
-        messagebox.showerror(_msg("dialog_error", "Hata", "Error"), locked_text, parent=parent)
+        if state.get("lockout_cycles", 0) >= MAX_LOCKOUT_CYCLES:
+            text = _msg(
+                "login_locked_max",
+                "Hesap 24 saat sureyle kilitlendi.",
+                "Account locked for 24 hours.",
+            )
+        else:
+            text = _msg(
+                "auth_locked",
+                f"Cok fazla hatali deneme. {remaining} saniye bekleyin.",
+                f"Too many failed attempts. Please wait {remaining} seconds.",
+            )
+        messagebox.showerror(_msg("dialog_error", "Hata", "Error"), text, parent=parent)
         return True
     return False
 
 
-def prompt_for_program_access(parent) -> bool:
-    config = load_auth_config()
+def _increment_lockout(key: str) -> bool:
+    """Increment attempt counter. Returns True if now locked."""
+    state = _lockout_state[key]
+    state["attempts"] = state.get("attempts", 0) + 1
+    state["total_attempts"] = state.get("total_attempts", 0) + 1
 
-    if PROGRAM_HASH_KEY not in config:
-        return _force_first_time_password_setup(parent)
+    if state["attempts"] >= MAX_BRUTE_FORCE_ATTEMPTS:
+        state["lockout_cycles"] = state.get("lockout_cycles", 0) + 1
+        duration = _get_lockout_duration(state["lockout_cycles"])
+        state["locked_until"] = time.time() + duration
+        state["attempts"] = 0
+        _save_lockout_state(_lockout_state)
+        return True
+    _save_lockout_state(_lockout_state)
+    return False
 
-    prompt_title = _msg("auth_login_title", "Program Girisi", "Program Login")
-    prompt_text = _msg("auth_login_prompt", "Program sifresini girin:", "Enter the program password:")
 
-    while True:
-        if _check_and_update_lockout(parent, "program"):
-            return False
+def _reset_lockout(key: str):
+    state = _lockout_state[key]
+    state["attempts"] = 0
+    state["locked_until"] = 0.0
+    _save_lockout_state(_lockout_state)
 
-        password = simpledialog.askstring(prompt_title, prompt_text, parent=parent, show="*")
-        if password is None:
-            return False
 
-        if _check_and_update_lockout(parent, "program"):
-            return False
+class LoginDialog(tk.Toplevel):
+    def __init__(self, master):
+        super().__init__(master)
+        self.master = master
+        self.result = False
 
-        if verify_password(password, config[PROGRAM_HASH_KEY]):
-            _lockout_state["program"]["attempts"] = 0
-            _lockout_state["program"]["locked_until"] = 0.0
-            _save_lockout_state(_lockout_state)
-            return True
+        self.title(_msg("login_title", "Giris", "Login"))
+        self.resizable(False, False)
+        self.grab_set()
 
-        state = _lockout_state["program"]
-        state["attempts"] += 1
-        if state["attempts"] >= MAX_BRUTE_FORCE_ATTEMPTS:
-            state["locked_until"] = time.time() + BRUTE_FORCE_DELAY_SECONDS
-            state["attempts"] = 0
-            _save_lockout_state(_lockout_state)
-            locked_text = _msg(
-                "auth_locked",
-                f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",
-                f"Too many failed attempts. Please wait {BRUTE_FORCE_DELAY_SECONDS} seconds.",
+        self.username_var = tk.StringVar()
+        self.password_var = tk.StringVar()
+
+        self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.bind("<Return>", lambda e: self._do_login())
+
+        self.update_idletasks()
+        w, h = 350, 200
+        sw = self.winfo_screenwidth()
+        sh = self.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        self.geometry(f"{w}x{h}+{x}+{y}")
+
+    def _on_close(self):
+        self.destroy()
+
+    def _build_ui(self):
+        container = ttk.Frame(self, padding=14)
+        container.pack(fill="both", expand=True)
+
+        ttk.Label(container, text=_msg("login_username", "Kullanici adi", "Username")).grid(
+            row=0, column=0, sticky="w", pady=(0, 4)
+        )
+        self.username_entry = ttk.Entry(container, textvariable=self.username_var, width=28)
+        self.username_entry.grid(row=0, column=1, sticky="ew", pady=(0, 4))
+        self.username_entry.focus_set()
+
+        ttk.Label(container, text=_msg("login_password", "Sifre", "Password")).grid(
+            row=1, column=0, sticky="w", pady=4
+        )
+        ttk.Entry(container, textvariable=self.password_var, show="*", width=28).grid(
+            row=1, column=1, sticky="ew", pady=4
+        )
+
+        button_frame = ttk.Frame(container)
+        button_frame.grid(row=2, column=0, columnspan=2, sticky="e", pady=(12, 0))
+
+        ttk.Button(
+            button_frame,
+            text=_msg("login_cancel", "Iptal", "Cancel"),
+            command=self.destroy,
+        ).pack(side="right", padx=(8, 0))
+        self.login_button = ttk.Button(
+            button_frame,
+            text=_msg("login_button", "Giris", "Login"),
+            command=self._do_login,
+        )
+        self.login_button.pack(side="right")
+
+        container.columnconfigure(1, weight=1)
+
+    def _do_login(self):
+        _ensure_default_admin()
+        config = _load_auth_config()
+
+        if _check_and_update_lockout(self, "login"):
+            return
+
+        time.sleep(ARTIFICIAL_LOGIN_DELAY)
+
+        username = self.username_var.get().strip()
+        password = self.password_var.get().strip()
+
+        if not username or not password:
+            messagebox.showerror(
+                _msg("dialog_error", "Hata", "Error"),
+                _msg("login_required", "Kullanici adi ve sifre gereklidir.", "Username and password are required."),
+                parent=self,
             )
-            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), locked_text, parent=parent)
-            return False
+            return
+
+        stored_username_hash = config.get(ADMIN_USERNAME_KEY, "")
+        stored_password_hash = config.get(ADMIN_HASH_KEY, "")
+
+        username_ok = verify_username(username, stored_username_hash)
+        password_ok = verify_password(password, stored_password_hash) if username_ok else False
+
+        if username_ok and password_ok:
+            _reset_lockout("login")
+            self.result = True
+            self.destroy()
         else:
-            remaining = MAX_BRUTE_FORCE_ATTEMPTS - state["attempts"]
-            remaining_text = _msg(
-                "auth_attempts_remaining",
-                f"Gecersiz sifre. Kalan deneme: {remaining}",
-                f"Invalid password. Remaining attempts: {remaining}",
-            )
-            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), remaining_text, parent=parent)
+            locked = _increment_lockout("login")
+            if locked:
+                state = _lockout_state["login"]
+                if state.get("lockout_cycles", 0) >= MAX_LOCKOUT_CYCLES:
+                    msg = _msg(
+                        "login_locked_max",
+                        "Hesap 24 saat sureyle kilitlendi. En fazla deneme sayisina ulasildi.",
+                        "Account locked for 24 hours. Maximum attempts reached.",
+                    )
+                else:
+                    duration = _get_lockout_duration(state.get("lockout_cycles", 1))
+                    msg = _msg(
+                        "login_locked",
+                        f"Hesap {duration} saniye sureyle kilitlendi.",
+                        f"Account locked for {duration} seconds.",
+                    )
+                messagebox.showerror(_msg("dialog_error", "Hata", "Error"), msg, parent=self)
+            else:
+                remaining = MAX_BRUTE_FORCE_ATTEMPTS - _lockout_state["login"]["attempts"]
+                msg = _msg(
+                    "login_invalid_attempts",
+                    f"Gecersiz kullanici adi veya sifre. Kalan deneme: {remaining}",
+                    f"Invalid username or password. Remaining attempts: {remaining}",
+                )
+                messagebox.showerror(_msg("dialog_error", "Hata", "Error"), msg, parent=self)
+                self.password_var.set("")
+                self.username_entry.focus_set()
 
 
-def _force_first_time_password_setup(parent) -> bool:
-    title = _msg("auth_first_time_title", "Ilk Kurulum", "First Time Setup")
-    info = _msg(
-        "auth_first_time_info",
-        "Program ilk kez calistiriliyor.\nLutfen bir program giris sifresi ve admin sifresi belirleyin.",
-        "First time setup. Please set a program access password and an admin password.",
-    )
-    messagebox.showinfo(title, info, parent=parent)
-
-    dialog = PasswordManagementDialog(parent, first_time=True)
-    parent.wait_window(dialog)
-    return dialog.saved
+def prompt_for_login(parent) -> bool:
+    """Show login dialog. Returns True if authenticated."""
+    _ensure_default_admin()
+    dialog = LoginDialog(parent)
+    dialog.wait_window()
+    return dialog.result
 
 
 def prompt_for_admin_password(parent) -> bool:
-    config = load_auth_config()
-    prompt_title = _msg("auth_admin_title", "Admin Dogrulama", "Admin Verification")
-    prompt_text = _msg("auth_admin_prompt", "Admin sifresini girin:", "Enter the admin password:")
+    """Verify existing admin password for sensitive operations."""
+    config = _load_auth_config()
 
     if ADMIN_HASH_KEY not in config:
         messagebox.showerror(
@@ -242,7 +393,12 @@ def prompt_for_admin_password(parent) -> bool:
         if _check_and_update_lockout(parent, "admin"):
             return False
 
-        password = simpledialog.askstring(prompt_title, prompt_text, parent=parent, show="*")
+        password = simpledialog.askstring(
+            _msg("auth_admin_title", "Admin Dogrulama", "Admin Verification"),
+            _msg("auth_admin_prompt", "Admin sifresini girin:", "Enter the admin password:"),
+            parent=parent,
+            show="*",
+        )
         if password is None:
             return False
 
@@ -250,57 +406,66 @@ def prompt_for_admin_password(parent) -> bool:
             return False
 
         if verify_password(password, config[ADMIN_HASH_KEY]):
-            _lockout_state["admin"]["attempts"] = 0
-            _lockout_state["admin"]["locked_until"] = 0.0
-            _save_lockout_state(_lockout_state)
+            _reset_lockout("admin")
             return True
 
-        state = _lockout_state["admin"]
-        state["attempts"] += 1
-        if state["attempts"] >= MAX_BRUTE_FORCE_ATTEMPTS:
-            state["locked_until"] = time.time() + BRUTE_FORCE_DELAY_SECONDS
-            state["attempts"] = 0
-            _save_lockout_state(_lockout_state)
-            locked_text = _msg(
-                "auth_locked",
-                f"Cok fazla hatali deneme. {BRUTE_FORCE_DELAY_SECONDS} saniye bekleyin.",
-                f"Too many failed attempts. Please wait {BRUTE_FORCE_DELAY_SECONDS} seconds.",
-            )
-            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), locked_text, parent=parent)
+        locked = _increment_lockout("admin")
+        if locked:
+            state = _lockout_state["admin"]
+            if state.get("lockout_cycles", 0) >= MAX_LOCKOUT_CYCLES:
+                messagebox.showerror(
+                    _msg("dialog_error", "Hata", "Error"),
+                    _msg(
+                        "login_locked_max",
+                        "Admin hesabi 24 saat sureyle kilitlendi.",
+                        "Admin account locked for 24 hours.",
+                    ),
+                    parent=parent,
+                )
+            else:
+                duration = _get_lockout_duration(state.get("lockout_cycles", 1))
+                messagebox.showerror(
+                    _msg("dialog_error", "Hata", "Error"),
+                    _msg(
+                        "login_locked",
+                        f"Admin hesabi {duration} saniye sureyle kilitlendi.",
+                        f"Admin account locked for {duration} seconds.",
+                    ),
+                    parent=parent,
+                )
             return False
         else:
-            remaining = MAX_BRUTE_FORCE_ATTEMPTS - state["attempts"]
-            remaining_text = _msg(
-                "auth_admin_attempts_remaining",
-                f"Gecersiz sifre. Kalan deneme: {remaining}",
-                f"Invalid password. Remaining attempts: {remaining}",
+            remaining = MAX_BRUTE_FORCE_ATTEMPTS - _lockout_state["admin"]["attempts"]
+            messagebox.showerror(
+                _msg("dialog_error", "Hata", "Error"),
+                _msg(
+                    "auth_admin_attempts_remaining",
+                    f"Gecersiz sifre. Kalan deneme: {remaining}",
+                    f"Invalid password. Remaining attempts: {remaining}",
+                ),
+                parent=parent,
             )
-            messagebox.showerror(_msg("dialog_error", "Hata", "Error"), remaining_text, parent=parent)
 
 
 class PasswordManagementDialog(tk.Toplevel):
-    def __init__(self, parent, first_time=False):
+    def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
         self.saved = False
-        self.first_time = first_time
 
-        self.title(_msg("auth_manage_title", "Parola Yonetimi", "Password Management"))
+        self.title(_msg("auth_manage_title", "Kullanici ve Parola Yonetimi", "User & Password Management"))
         self.resizable(False, False)
         self.transient(parent)
         self.grab_set()
 
-        self.program_password_var = tk.StringVar()
-        self.program_password_confirm_var = tk.StringVar()
-        self.admin_password_var = tk.StringVar()
-        self.admin_password_confirm_var = tk.StringVar()
+        self.username_var = tk.StringVar()
+        self.password_var = tk.StringVar()
+        self.password_confirm_var = tk.StringVar()
 
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _on_close(self):
-        if self.first_time:
-            return
         self.destroy()
 
     def _build_ui(self):
@@ -309,56 +474,47 @@ class PasswordManagementDialog(tk.Toplevel):
 
         info_text = _msg(
             "auth_manage_info",
-            "Bos birakilan alanlar degistirilmez.",
-            "Blank fields are left unchanged.",
+            "Bos birakilan alanlar degistirilmez.\n"
+            "Kullanici adi en az 3 karakter, bosluk icermemeli.\n"
+            "Sifre en az 8 karakter, bir buyuk harf ve bir rakam icermeli.",
+            "Blank fields are left unchanged.\n"
+            "Username: min 3 characters, no spaces.\n"
+            "Password: min 8 characters, one uppercase, one digit.",
         )
-        if self.first_time:
-            info_text = _msg(
-                "auth_first_time_required",
-                "Tum alanlar doldurulmalidir. Sifreler en az {} karakter olmalidir.".format(MIN_PASSWORD_LENGTH),
-                "All fields are required. Passwords must be at least {} characters.".format(MIN_PASSWORD_LENGTH),
-            )
-        ttk.Label(
-            container,
-            text=info_text,
-        ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, 10))
+        ttk.Label(container, text=info_text).grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 10)
+        )
 
         ttk.Label(
             container,
-            text=_msg("auth_program_password", "Program giris sifresi", "Program access password"),
+            text=_msg("auth_manage_username", "Yeni kullanici adi", "New username"),
         ).grid(row=1, column=0, sticky="w", pady=4)
-        ttk.Entry(container, textvariable=self.program_password_var, show="*", width=28).grid(
-            row=1, column=1, sticky="ew", pady=4
+        self.username_entry = ttk.Entry(container, textvariable=self.username_var, width=28)
+        self.username_entry.grid(row=1, column=1, sticky="ew", pady=4)
+        self.username_entry.focus_set()
+
+        ttk.Separator(container, orient="horizontal").grid(
+            row=2, column=0, columnspan=2, sticky="ew", pady=10
         )
 
         ttk.Label(
             container,
-            text=_msg("auth_program_password_confirm", "Program sifresi tekrar", "Confirm program password"),
-        ).grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Entry(container, textvariable=self.program_password_confirm_var, show="*", width=28).grid(
-            row=2, column=1, sticky="ew", pady=4
+            text=_msg("auth_manage_password", "Yeni sifre", "New password"),
+        ).grid(row=3, column=0, sticky="w", pady=4)
+        ttk.Entry(container, textvariable=self.password_var, show="*", width=28).grid(
+            row=3, column=1, sticky="ew", pady=4
         )
-
-        ttk.Separator(container, orient="horizontal").grid(row=3, column=0, columnspan=2, sticky="ew", pady=10)
 
         ttk.Label(
             container,
-            text=_msg("auth_admin_password", "Admin sifresi", "Admin password"),
+            text=_msg("auth_manage_confirm", "Yeni sifre tekrar", "Confirm new password"),
         ).grid(row=4, column=0, sticky="w", pady=4)
-        ttk.Entry(container, textvariable=self.admin_password_var, show="*", width=28).grid(
+        ttk.Entry(container, textvariable=self.password_confirm_var, show="*", width=28).grid(
             row=4, column=1, sticky="ew", pady=4
         )
 
-        ttk.Label(
-            container,
-            text=_msg("auth_admin_password_confirm", "Admin sifresi tekrar", "Confirm admin password"),
-        ).grid(row=5, column=0, sticky="w", pady=4)
-        ttk.Entry(container, textvariable=self.admin_password_confirm_var, show="*", width=28).grid(
-            row=5, column=1, sticky="ew", pady=4
-        )
-
         button_frame = ttk.Frame(container)
-        button_frame.grid(row=6, column=0, columnspan=2, sticky="e", pady=(12, 0))
+        button_frame.grid(row=5, column=0, columnspan=2, sticky="e", pady=(12, 0))
 
         ttk.Button(
             button_frame,
@@ -374,83 +530,74 @@ class PasswordManagementDialog(tk.Toplevel):
         container.columnconfigure(1, weight=1)
 
     def _save(self):
-        new_program_password = self.program_password_var.get().strip()
-        confirm_program_password = self.program_password_confirm_var.get().strip()
-        new_admin_password = self.admin_password_var.get().strip()
-        confirm_admin_password = self.admin_password_confirm_var.get().strip()
+        new_username = self.username_var.get().strip()
+        new_password = self.password_var.get().strip()
+        confirm_password = self.password_confirm_var.get().strip()
 
-        if self.first_time:
-            if not new_program_password or not new_admin_password:
-                messagebox.showwarning(
+        if not new_username and not new_password:
+            messagebox.showwarning(
+                _msg("dialog_error", "Hata", "Error"),
+                _msg(
+                    "auth_manage_no_changes",
+                    "Degistirmek icin en az bir alan doldurun.",
+                    "Fill at least one field to make a change.",
+                ),
+                parent=self,
+            )
+            return
+
+        if new_username:
+            if len(new_username) < 3:
+                messagebox.showerror(
                     _msg("dialog_error", "Hata", "Error"),
                     _msg(
-                        "auth_first_time_all_required",
-                        "Ilk kurulumda tum sifre alanlari doldurulmalidir.",
-                        "All password fields must be filled during first time setup.",
+                        "auth_username_short",
+                        "Kullanici adi en az 3 karakter olmalidir.",
+                        "Username must be at least 3 characters.",
+                    ),
+                    parent=self,
+                )
+                return
+            if " " in new_username:
+                messagebox.showerror(
+                    _msg("dialog_error", "Hata", "Error"),
+                    _msg(
+                        "auth_username_whitespace",
+                        "Kullanici adi bosluk iceremez.",
+                        "Username cannot contain spaces.",
                     ),
                     parent=self,
                 )
                 return
 
-        if not new_program_password and not new_admin_password:
-            messagebox.showwarning(
-                _msg("dialog_error", "Hata", "Error"),
-                _msg(
-                    "auth_manage_no_changes",
-                    "Degistirmek icin en az bir yeni sifre girin.",
-                    "Enter at least one new password to change.",
-                ),
-                parent=self,
-            )
-            return
-
-        if new_program_password and new_program_password != confirm_program_password:
-            messagebox.showerror(
-                _msg("dialog_error", "Hata", "Error"),
-                _msg(
-                    "auth_program_password_mismatch",
-                    "Program sifresi ve tekrar alani eslesmiyor.",
-                    "Program password and confirmation do not match.",
-                ),
-                parent=self,
-            )
-            return
-
-        if new_admin_password and new_admin_password != confirm_admin_password:
-            messagebox.showerror(
-                _msg("dialog_error", "Hata", "Error"),
-                _msg(
-                    "auth_admin_password_mismatch",
-                    "Admin sifresi ve tekrar alani eslesmiyor.",
-                    "Admin password and confirmation do not match.",
-                ),
-                parent=self,
-            )
-            return
-
-        if new_program_password:
-            valid, err_msg = validate_password_strength(new_program_password)
+        if new_password:
+            if new_password != confirm_password:
+                messagebox.showerror(
+                    _msg("dialog_error", "Hata", "Error"),
+                    _msg(
+                        "auth_password_mismatch",
+                        "Sifre ve tekrar alani eslesmiyor.",
+                        "Password and confirmation do not match.",
+                    ),
+                    parent=self,
+                )
+                return
+            valid, err_msg = validate_password_strength(new_password)
             if not valid:
                 messagebox.showerror(_msg("dialog_error", "Hata", "Error"), err_msg, parent=self)
                 return
 
-        if new_admin_password:
-            valid, err_msg = validate_password_strength(new_admin_password)
-            if not valid:
-                messagebox.showerror(_msg("dialog_error", "Hata", "Error"), err_msg, parent=self)
-                return
-
-        update_passwords(
-            admin_password=new_admin_password or None,
-            program_password=new_program_password or None,
+        update_admin_credentials(
+            new_username=new_username or None,
+            new_password=new_password or None,
         )
         self.saved = True
         messagebox.showinfo(
             _msg("dialog_success", "Basarili", "Success"),
             _msg(
                 "auth_manage_saved",
-                "Parolalar basariyla guncellendi.",
-                "Passwords were updated successfully.",
+                "Kullanici adi ve/veya sifre basariyla guncellendi.",
+                "Username and/or password updated successfully.",
             ),
             parent=self,
         )
@@ -458,6 +605,7 @@ class PasswordManagementDialog(tk.Toplevel):
 
 
 def show_password_management_dialog(parent) -> bool:
+    """Open password management dialog (requires prior admin verification)."""
     dialog = PasswordManagementDialog(parent)
-    parent.wait_window(dialog)
+    dialog.wait_window()
     return dialog.saved

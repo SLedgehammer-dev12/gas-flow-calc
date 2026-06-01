@@ -1,5 +1,26 @@
 # Changelog
 
+## 6.7.0
+
+### Single User Login System
+- **Admin login with username + password**: Default credentials `admin` / `123456`.
+- **Login dialog** appears before the main window opens, replacing the old two-password system.
+- **User settings menu**: Admin can change username and password from Help > User Settings.
+
+### Advanced Brute Force Protection
+- **Exponential backoff**: Lockout duration grows: 30s → 60s → 120s → 240s → 480s → 24h.
+- **Artificial 1-second delay** on every failed login to slow automated brute force tools.
+- **HMAC-signed lockout state** persisted across app restarts; tampering detected.
+- **Username enumeration prevented**: Case-insensitive, constant-time username comparison.
+- **Total lockout after 6 cycles**: 24-hour hard lock when maximum cycles reached.
+
+### Platform Support
+- **macOS config path fixed**: Now writes to `~/Library/Application Support/Gas Flow Calc/` instead of inside the `.app` bundle.
+
+### Backward Compatibility
+- Existing `auth_admin_password_hash` in config is preserved; `auth_admin_username = "admin"` is auto-added on first run.
+- Old `"program"` lockout state key auto-migrates to `"login"`.
+
 ## 6.6.0
 
 ### Cross-Platform Support
