@@ -12,7 +12,7 @@ import webbrowser
 import sys
 
 # Modüler importlar
-from auth import load_auth_config, prompt_for_admin_password, prompt_for_login, show_password_management_dialog
+from auth import prompt_for_admin_password, prompt_for_login, show_password_management_dialog
 from app_paths import get_config_path, get_install_dir, get_session_file_path, load_config, save_config
 from constants import convert_pressure_to_pa, convert_temperature_to_k
 from release_metadata import APP_VERSION, get_release_notes, get_release_notes_title, get_versioned_exe_name
