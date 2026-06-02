@@ -1,5 +1,7 @@
 name: Build and Release (Windows + macOS)
 
+# v6.7.0: single admin user, brute force hardening, macOS config fix
+
 on:
   release:
     types: [published]

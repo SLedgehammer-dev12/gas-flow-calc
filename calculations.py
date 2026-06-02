@@ -1160,6 +1160,10 @@ class GasFlowCalculator:
             "pressure_clamped": pressure_clamped,
         }
 
+    @staticmethod
+    def _empty_profile_data(P, velocity=0.0):
+        return {"distance": [0.0], "pressure": [P], "velocity": [velocity]}
+
     def calculate_max_length(self, inputs):
         """Maksimum uzunluk hesabı (Binary Search)."""
         P_in = inputs['P_in']; P_out_target = inputs['P_out_target']
@@ -1188,6 +1192,10 @@ class GasFlowCalculator:
                 "note": "Giriş ve çıkış basıncı eşit.",
                 "phase_info": phase_info,
                 "flow_mode": flow_mode,
+                "profile_data": self._empty_profile_data(P_in),
+                "velocity_in": 0.0,
+                "velocity_out": 0.0,
+                "P_out": P_in,
             }
         
         T = inputs['T']; mole_fractions = inputs['mole_fractions']
@@ -1245,6 +1253,10 @@ class GasFlowCalculator:
                     "error": "Sifir boru uzunlugunda bile fitting kayiplari hedef cikis basincini saglamiyor.",
                     "phase_info": zero_profile.get("phase_info", phase_info),
                     "flow_mode": flow_mode,
+                    "profile_data": zero_profile.get("profile_data", self._empty_profile_data(P_in)),
+                    "velocity_in": velocity_in,
+                    "velocity_out": zero_profile.get("velocity_out", velocity_in),
+                    "P_out": zero_profile.get("P_out", P_in),
                 }
 
             L_low = 0.0
@@ -1287,11 +1299,21 @@ class GasFlowCalculator:
             if delta_p_fittings >= delta_p_total_target:
                 return {
                     "L_max": 0,
+                    "Re": Re,
+                    "f": f,
+                    "delta_p_pipe": 0,
+                    "delta_p_fittings": delta_p_fittings,
+                    "delta_p_acceleration": 0,
+                    "m_dot": m_dot,
                     "error": "Boru elemanı kayıpları toplam basınç farkını aşıyor!",
                     "phase_info": phase_info,
                     "flow_mode": flow_mode,
                     "gas_props_in": gas_props_in,
                     "gas_props_out": gas_props_in,
+                    "profile_data": self._empty_profile_data(P_in, velocity_in),
+                    "velocity_in": velocity_in,
+                    "velocity_out": velocity_in,
+                    "P_out": P_in,
                 }
             
             available_delta_p_pipe = delta_p_total_target - delta_p_fittings
@@ -1335,10 +1357,17 @@ class GasFlowCalculator:
                     "f": f_zero,
                     "delta_p_pipe": 0,
                     "delta_p_fittings": dp_fit_zero,
+                    "delta_p_acceleration": 0,
                     "m_dot": m_dot,
                     "error": "Sifir boru uzunlugunda bile fitting kayiplari hedef cikis basincini saglamiyor.",
                     "phase_info": phase_info,
                     "flow_mode": flow_mode,
+                    "gas_props_in": gas_props_in,
+                    "gas_props_out": gas_props_in,
+                    "profile_data": self._empty_profile_data(P_in, velocity_in),
+                    "velocity_in": velocity_in,
+                    "velocity_out": velocity_in,
+                    "P_out": P_in,
                 }
 
             L_low = 0.0
@@ -1605,7 +1634,10 @@ class GasFlowCalculator:
                 final_result = self.calculate_pressure_drop(sim_inputs, num_segments=20)
                 final_result['velocity_status'] = "Hız Limiti Aşıldı"
             else:
-                return {"error": "Uygun boru standardı bulunamadı."}
+                return {
+                    "error": "Uygun boru standardı bulunamadı.",
+                    "profile_data": self._empty_profile_data(P_in),
+                }
 
         # Sonuçları birleştir
         result = {

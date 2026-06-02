@@ -332,6 +332,51 @@ class Updater:
             check=True,
         )
 
+    def _curl_fetch_text(self, url: str, timeout: int):
+        command = ["curl", "--silent", "--max-time", str(int(timeout))]
+        for key, value in self._headers().items():
+            command.extend(["-H", f"{key}: {value}"])
+        command.append(url)
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=max(30, int(timeout) + 15),
+            check=True,
+        )
+        return result.stdout
+
+    def _curl_download_to_path(self, url: str, destination_path: str, timeout: int):
+        header_args = []
+        for key, value in self._headers().items():
+            header_args.extend(["-H", f"{key}: {value}"])
+        command = (
+            ["curl", "--silent", "--max-time", str(int(timeout)),
+             "--output", destination_path]
+            + header_args + [url]
+        )
+        subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=max(60, int(timeout) + 30),
+            check=True,
+        )
+
+    def _curl_available(self):
+        try:
+            subprocess.run(
+                ["curl", "--version"],
+                capture_output=True,
+                timeout=5,
+                check=True,
+            )
+            return True
+        except Exception:
+            return False
+
     def _read_url_text(self, url: str, accept: str | None = None, timeout: int = 10):
         headers = self._headers(accept)
         if ssl is None:
@@ -341,6 +386,12 @@ class Updater:
                     level="WARNING",
                 )
                 return self._powershell_fetch_text(url, headers, timeout)
+            if self._curl_available():
+                self.log(
+                    "Python SSL kullanilamiyor; curl ile istek gonderiliyor.",
+                    level="WARNING",
+                )
+                return self._curl_fetch_text(url, timeout)
             raise RuntimeError(self._format_request_error(RuntimeError("No module named '_ssl'")))
 
         req = Request(url, headers=headers)
@@ -358,6 +409,12 @@ class Updater:
                     level="WARNING",
                 )
                 return self._powershell_fetch_text(url, headers, timeout)
+            if self._is_ssl_verification_error(error) and self._curl_available():
+                self.log(
+                    "Python SSL dogrulamasi basarisiz oldu; curl ile tekrar deneniyor.",
+                    level="WARNING",
+                )
+                return self._curl_fetch_text(url, timeout)
             raise
 
     def _default_download_path(self, file_name: str):
@@ -500,6 +557,18 @@ class Updater:
                 self._verify_file_hash(file_path, asset_info)
                 self.log(f"Indirme tamamlandi: {file_path}")
                 return file_path
+            if self._curl_available():
+                self.log(
+                    "Python SSL kullanilamiyor; indirme curl ile yapiliyor.",
+                    level="WARNING",
+                )
+                self._curl_download_to_path(browser_download_url, file_path, timeout=60)
+                if expected_size and os.path.getsize(file_path) != int(expected_size):
+                    os.remove(file_path)
+                    raise RuntimeError(f"Dosya boyutu uyumsuz (curl): beklenen={expected_size}")
+                self._verify_file_hash(file_path, asset_info)
+                self.log(f"Indirme tamamlandi: {file_path}")
+                return file_path
             raise RuntimeError(self._format_request_error(RuntimeError("No module named '_ssl'")))
 
         try:
@@ -510,23 +579,43 @@ class Updater:
                     data = _download_once()
                 except Exception as retry_error:
                     raise RuntimeError(f"Indirme basarisiz: {retry_error}") from retry_error
-            elif isinstance(e, URLError) and os.name == "nt" and self._is_ssl_verification_error(e):
-                self.log(
-                    "Python SSL dogrulamasi basarisiz oldu; indirme Windows ag katmani ile tekrar deneniyor.",
-                    level="WARNING",
-                )
-                try:
-                    self._powershell_download_to_path(browser_download_url, self._headers(), file_path, timeout=60)
-                    if expected_size and os.path.getsize(file_path) != int(expected_size):
-                        os.remove(file_path)
-                        raise RuntimeError(f"Dosya boyutu uyumsuz (PowerShell fallback): beklenen={expected_size}")
-                    self._verify_file_hash(file_path, asset_info)
-                    self.log(f"Indirme tamamlandi: {file_path}")
-                    return file_path
-                except Exception as fallback_error:
-                    raise RuntimeError(
-                        f"Indirme basarisiz: {self._format_request_error(e)} / PowerShell fallback: {fallback_error}"
-                    ) from e
+            elif isinstance(e, URLError) and self._is_ssl_verification_error(e):
+                if os.name == "nt":
+                    self.log(
+                        "Python SSL dogrulamasi basarisiz oldu; indirme Windows ag katmani ile tekrar deneniyor.",
+                        level="WARNING",
+                    )
+                    try:
+                        self._powershell_download_to_path(browser_download_url, self._headers(), file_path, timeout=60)
+                        if expected_size and os.path.getsize(file_path) != int(expected_size):
+                            os.remove(file_path)
+                            raise RuntimeError(f"Dosya boyutu uyumsuz (PowerShell fallback): beklenen={expected_size}")
+                        self._verify_file_hash(file_path, asset_info)
+                        self.log(f"Indirme tamamlandi: {file_path}")
+                        return file_path
+                    except Exception as fallback_error:
+                        raise RuntimeError(
+                            f"Indirme basarisiz: {self._format_request_error(e)} / PowerShell fallback: {fallback_error}"
+                        ) from e
+                elif self._curl_available():
+                    self.log(
+                        "Python SSL dogrulamasi basarisiz oldu; indirme curl ile tekrar deneniyor.",
+                        level="WARNING",
+                    )
+                    try:
+                        self._curl_download_to_path(browser_download_url, file_path, timeout=60)
+                        if expected_size and os.path.getsize(file_path) != int(expected_size):
+                            os.remove(file_path)
+                            raise RuntimeError(f"Dosya boyutu uyumsuz (curl fallback): beklenen={expected_size}")
+                        self._verify_file_hash(file_path, asset_info)
+                        self.log(f"Indirme tamamlandi: {file_path}")
+                        return file_path
+                    except Exception as fallback_error:
+                        raise RuntimeError(
+                            f"Indirme basarisiz: {self._format_request_error(e)} / curl fallback: {fallback_error}"
+                        ) from e
+                else:
+                    raise RuntimeError(f"Indirme basarisiz: {self._format_request_error(e)}") from e
             else:
                 raise RuntimeError(f"Indirme basarisiz: {self._format_request_error(e)}") from e
         except Exception as e:

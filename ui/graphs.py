@@ -4,16 +4,23 @@ from theme_colors import resolve_colors
 
 def show_graphs(container, result, app=None):
     """Hesaplama sonuçları için grafikleri sağlanan container içine çizer."""
-    if not result: return
-    
+    if not result:
+        if app:
+            app.log_message("Grafikler: Hesaplama sonucu bulunamadi.", level="WARNING")
+        return
+
     try:
         import matplotlib.pyplot as plt
         from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
     except ImportError:
+        if app:
+            app.log_message("Grafikler: matplotlib kullanilamiyor, grafikler devre disi.", level="WARNING")
         return
 
     data = result.get('profile_data')
     if not data or len(data.get('distance', [])) == 0:
+        if app:
+            app.log_message("Grafikler: Profil verisi bulunamadi, grafik cizilemiyor.", level="WARNING")
         for widget in container.winfo_children():
             widget.destroy()
         return
