@@ -1,7 +1,39 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.7.0"
+APP_VERSION = "6.7.1"
 
 RELEASE_NOTES = {
+    "6.7.1": {
+        "tr": """6.7.1 ile gelen duzeltmeler:
+
+SSL SERTIFIKA FALLBACK (macOS/Linux):
+- Kurumsal ag SSL hatalarinda (CERTIFICATE_VERIFY_FAILED) guncelleme istekleri curl ile yeniden deneniyor.
+- macOS ve Linux'ta PowerShell benzeri bir fallback saglanmis oldu.
+
+PROFIL VERISI DUZELTILDI:
+- Maksimum uzunluk hesaplamasinda fitting kayiplari nedeniyle erken donulen 4 farkli yolda profil verisi eksik kaliyordu.
+- Minimum cap hesabinda standart boru bulunamadiginda da ayni sorun vardi.
+- Artik tum erken donus yollari profil verisi iceriyor; grafikler ve profil tablosu bos kalmayacak.
+
+GRAFIK SESSIZLIGI COZULDU:
+- matplotlib eksik oldugunda veya profil verisi bulunamadiginda grafikler LogPanel'e uyari yaziyor.
+- Kullanici artik grafiklerin neden cizilmedigini LogPanel'den gorebiliyor.
+""",
+        "en": """Fixes introduced in 6.7.1:
+
+SSL CERTIFICATE FALLBACK (macOS/Linux):
+- When corporate network SSL errors (CERTIFICATE_VERIFY_FAILED) occur, update requests are retried via curl.
+- macOS and Linux now have a PowerShell-like SSL fallback mechanism.
+
+PROFILE DATA FIXED:
+- Four early-return paths in max-length calculation omitted profile_data when fitting losses exceeded the target.
+- The min-diameter error path had the same issue.
+- All early-return paths now include profile_data; charts and the profile table will no longer be empty.
+
+CHART SILENCE RESOLVED:
+- When matplotlib is missing or profile_data is unavailable, graphs now log a warning to the LogPanel.
+- Users can now see why charts are not rendered.
+""",
+    },
     "6.7.0": {
         "tr": """6.7.0 ile gelen baslica yenilikler:
 

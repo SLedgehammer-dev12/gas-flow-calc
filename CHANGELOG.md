@@ -1,5 +1,20 @@
 # Changelog
 
+## 6.7.1
+
+### SSL Certificate Fallback (macOS/Linux)
+- Corporate network SSL errors (`CERTIFICATE_VERIFY_FAILED`) now trigger a `curl` fallback on macOS and Linux, mirroring the existing PowerShell fallback on Windows.
+- New `_curl_fetch_text()` and `_curl_download_to_path()` methods added to `updater.py`.
+
+### Profile Data Fix
+- **Max-length calculation**: All 4 early-return paths (equal pressure, phase-aware fitting loss, incompressible fitting loss, compressible fitting loss) now include `profile_data` in the result dict.
+- **Min-diameter calculation**: The error path for "no matching pipe standard" now includes `profile_data`.
+- Charts and profile table will no longer appear empty after these edge-case calculations.
+
+### Chart Silence Resolved
+- `ui/graphs.py` now calls `app.log_message()` when `matplotlib` is unavailable or when `profile_data` is missing/empty.
+- Users can see the reason in the LogPanel instead of being left with an empty charts tab.
+
 ## 6.7.0
 
 ### Single User Login System
