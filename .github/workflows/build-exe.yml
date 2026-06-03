@@ -45,7 +45,7 @@ jobs:
       - name: Create source ZIP for in-app updates
         shell: bash
         run: |
-          git archive --format=zip --output=Gas_Flow_Calc_V6.7.0_source.zip HEAD
+          git archive --format=zip --output=Gas_Flow_Calc_V6.7.1_source.zip HEAD
 
       - name: Calculate SHA256 checksums
         shell: bash
@@ -56,11 +56,11 @@ jobs:
               break
             fi
           done
-          if [ -f "Gas_Flow_Calc_V6.7.0_source.zip" ]; then
-            echo "SHA256_WIN_ZIP=$(sha256sum Gas_Flow_Calc_V6.7.0_source.zip | cut -d' ' -f1)" >> $GITHUB_ENV
+          if [ -f "Gas_Flow_Calc_V6.7.1_source.zip" ]; then
+            echo "SHA256_WIN_ZIP=$(sha256sum Gas_Flow_Calc_V6.7.1_source.zip | cut -d' ' -f1)" >> $GITHUB_ENV
           fi
 
-      - name: Upload to GitHub Release
+      - name: Ensure release exists and upload
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -71,14 +71,16 @@ jobs:
           elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
             TAG_NAME="${{ github.event.release.tag_name }}"
           else
-            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.7.0")
+            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.7.1")
           fi
+
+          gh release create "$TAG_NAME" --generate-notes --title "$TAG_NAME" 2>/dev/null || true
 
           EXE_FILE=""
           for f in dist/*.exe; do
             [ -f "$f" ] && EXE_FILE="$f" && break
           done
-          ZIP_FILE="Gas_Flow_Calc_V6.7.0_source.zip"
+          ZIP_FILE="Gas_Flow_Calc_V6.7.1_source.zip"
 
           if [ -n "$EXE_FILE" ]; then
             gh release upload "$TAG_NAME" "$EXE_FILE" --clobber
@@ -121,16 +123,16 @@ jobs:
           if [ -d "$APP_PATH" ]; then
             hdiutil create -volname "Gas Flow Calc V6.7" \
               -srcfolder "$APP_PATH" \
-              -ov -format UDZO "Gas_Flow_Calc_V6.7.0.dmg"
+              -ov -format UDZO "Gas_Flow_Calc_V6.7.1.dmg"
           fi
 
       - name: Calculate SHA256 checksum
         run: |
-          if [ -f "Gas_Flow_Calc_V6.7.0.dmg" ]; then
-            echo "SHA256_MAC_DMG=$(shasum -a 256 Gas_Flow_Calc_V6.7.0.dmg | cut -d' ' -f1)" >> $GITHUB_ENV
+          if [ -f "Gas_Flow_Calc_V6.7.1.dmg" ]; then
+            echo "SHA256_MAC_DMG=$(shasum -a 256 Gas_Flow_Calc_V6.7.1.dmg | cut -d' ' -f1)" >> $GITHUB_ENV
           fi
 
-      - name: Upload DMG to GitHub Release
+      - name: Ensure release exists and upload DMG
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -141,9 +143,11 @@ jobs:
           elif [[ "${GITHUB_EVENT_NAME}" == "release" ]]; then
             TAG_NAME="${{ github.event.release.tag_name }}"
           else
-            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.7.0")
+            TAG_NAME=$(git describe --tags --abbrev=0 2>/dev/null || echo "v6.7.1")
           fi
 
-          if [ -f "Gas_Flow_Calc_V6.7.0.dmg" ]; then
-            gh release upload "$TAG_NAME" Gas_Flow_Calc_V6.7.0.dmg --clobber
+          gh release create "$TAG_NAME" --generate-notes --title "$TAG_NAME" 2>/dev/null || true
+
+          if [ -f "Gas_Flow_Calc_V6.7.1.dmg" ]; then
+            gh release upload "$TAG_NAME" Gas_Flow_Calc_V6.7.1.dmg --clobber
           fi

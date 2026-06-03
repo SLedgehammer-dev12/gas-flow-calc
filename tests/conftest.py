@@ -6,6 +6,10 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "requires_tk: skip test when Tcl/Tk is not available")
+
+
 @pytest.fixture
 def calc():
     from calculations import GasFlowCalculator
