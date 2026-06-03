@@ -332,9 +332,11 @@ class Updater:
             check=True,
         )
 
-    def _curl_fetch_text(self, url: str, timeout: int):
+    def _curl_fetch_text(self, url: str, timeout: int, headers: dict | None = None):
+        if headers is None:
+            headers = self._headers()
         command = ["curl", "--silent", "--max-time", str(int(timeout))]
-        for key, value in self._headers().items():
+        for key, value in headers.items():
             command.extend(["-H", f"{key}: {value}"])
         command.append(url)
         result = subprocess.run(
@@ -347,9 +349,11 @@ class Updater:
         )
         return result.stdout
 
-    def _curl_download_to_path(self, url: str, destination_path: str, timeout: int):
+    def _curl_download_to_path(self, url: str, destination_path: str, timeout: int, headers: dict | None = None):
+        if headers is None:
+            headers = self._headers()
         header_args = []
-        for key, value in self._headers().items():
+        for key, value in headers.items():
             header_args.extend(["-H", f"{key}: {value}"])
         command = (
             ["curl", "--silent", "--max-time", str(int(timeout)),
@@ -391,7 +395,7 @@ class Updater:
                     "Python SSL kullanilamiyor; curl ile istek gonderiliyor.",
                     level="WARNING",
                 )
-                return self._curl_fetch_text(url, timeout)
+                return self._curl_fetch_text(url, timeout, headers)
             raise RuntimeError(self._format_request_error(RuntimeError("No module named '_ssl'")))
 
         req = Request(url, headers=headers)
@@ -414,7 +418,7 @@ class Updater:
                     "Python SSL dogrulamasi basarisiz oldu; curl ile tekrar deneniyor.",
                     level="WARNING",
                 )
-                return self._curl_fetch_text(url, timeout)
+                return self._curl_fetch_text(url, timeout, headers)
             raise
 
     def _default_download_path(self, file_name: str):

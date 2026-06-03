@@ -1432,6 +1432,10 @@ class GasFlowCalculator:
             result["gas_props_out"] = self.calculate_thermo_properties(
                 P_out_target, T, mole_fractions, library_choice, cp_state
             )
+            result.setdefault("profile_data", self._empty_profile_data(P_in, velocity_in))
+            result.setdefault("velocity_in", velocity_in)
+            result.setdefault("velocity_out", velocity_in)
+            result.setdefault("P_out", P_out_target)
 
         return result
 

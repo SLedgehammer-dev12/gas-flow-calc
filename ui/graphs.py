@@ -83,9 +83,15 @@ def show_graphs(container, result, app=None):
         spine.set_color(grid_color)
 
     plt.tight_layout()
-    canvas = FigureCanvasTkAgg(fig, master=container)
-    canvas.draw()
-    canvas.get_tk_widget().pack(fill="both", expand=True)
-    
+    try:
+        canvas = FigureCanvasTkAgg(fig, master=container)
+        canvas.draw()
+        canvas.get_tk_widget().pack(fill="both", expand=True)
+    except Exception as e:
+        plt.close(fig)
+        if app:
+            app.log_message(f"Grafikler: Canvas olusturma hatasi: {e}", level="ERROR")
+        return
+
     # Figürü bellekten temizle
     plt.close(fig)

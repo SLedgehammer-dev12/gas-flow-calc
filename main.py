@@ -782,12 +782,21 @@ class GasFlowCalculatorApp:
                 self.refresh_schematic()  # Şemayı sonuçlarla güncelle
                 
                 # Tabloyu ve Profili Doldur
-                self.populate_results_table(data['result'])
-                self.populate_profile_table(data['result'])
+                try:
+                    self.populate_results_table(data['result'])
+                except Exception as tbl_err:
+                    self.log_message(f"Sonuc tablosu doldurma hatasi: {tbl_err}", level="ERROR")
+                try:
+                    self.populate_profile_table(data['result'])
+                except Exception as prof_err:
+                    self.log_message(f"Profil tablosu doldurma hatasi: {prof_err}", level="ERROR")
                 self._update_warning_banner(data['result'])
-                
+
                 # Gömülü Grafikleri Çiz
-                show_graphs(self.charts_container, data['result'], app=self)
+                try:
+                    show_graphs(self.charts_container, data['result'], app=self)
+                except Exception as chart_err:
+                    self.log_message(f"Grafik cizim hatasi: {chart_err}", level="ERROR")
 
                 self.results_panel.select_tab("summary")
 
@@ -828,15 +837,18 @@ class GasFlowCalculatorApp:
 
     def populate_profile_table(self, result):
         self.results_panel.clear_profile_table()
-            
+
         profile_data = result.get("profile_data")
         if profile_data and len(profile_data.get("distance", [])) > 0:
-            d_list = profile_data["distance"]
-            p_list = profile_data["pressure"]
-            v_list = profile_data["velocity"]
-            
+            d_list = profile_data.get("distance", [])
+            p_list = profile_data.get("pressure", [])
+            v_list = profile_data.get("velocity", [])
+
             for d, p, v in zip(d_list, p_list, v_list):
-                self.results_panel.add_profile_row(f"{d:.2f}", f"{p:.2f}", f"{v:.2f}")
+                try:
+                    self.results_panel.add_profile_row(f"{d:.2f}", f"{p:.2f}", f"{v:.2f}")
+                except (ValueError, TypeError) as fmt_err:
+                    self.log_message(f"Profil verisi bicim hatasi: {fmt_err}", level="WARNING")
             
             self.results_panel.enable_csv_export(True)
         else:
