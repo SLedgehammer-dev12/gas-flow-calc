@@ -10,6 +10,22 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "requires_tk: skip test when Tcl/Tk is not available")
 
 
+def _tk_available():
+    try:
+        import tkinter
+        root = tkinter.Tk()
+        root.destroy()
+        return True
+    except Exception:
+        return False
+
+
+requires_tk = pytest.mark.skipif(
+    not _tk_available(),
+    reason="Tcl/Tk not available in this environment",
+)
+
+
 @pytest.fixture
 def calc():
     from calculations import GasFlowCalculator

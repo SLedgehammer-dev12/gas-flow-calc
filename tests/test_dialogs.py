@@ -5,6 +5,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 import tkinter as tk
 import pytest
 from unittest.mock import patch
+from tests.conftest import requires_tk
 
 
 @pytest.fixture
@@ -16,6 +17,7 @@ def root():
     r.destroy()
 
 
+@requires_tk
 class TestDialogs:
     def test_show_about_does_not_crash(self, root):
         from ui.dialogs import show_about

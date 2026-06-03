@@ -7,22 +7,7 @@ from unittest.mock import MagicMock
 import pytest
 from target_utils import TARGET_PRESSURE_DROP, TARGET_MIN_DIAMETER
 from flow_utils import FLOW_MODE_INCOMPRESSIBLE
-
-
-def _tk_available():
-    try:
-        import tkinter
-        root = tkinter.Tk()
-        root.destroy()
-        return True
-    except Exception:
-        return False
-
-
-requires_tk = pytest.mark.skipif(
-    not _tk_available(),
-    reason="Tcl/Tk not available in this environment",
-)
+from tests.conftest import requires_tk
 
 
 class MockApp:
