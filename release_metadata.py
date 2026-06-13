@@ -1,7 +1,21 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.7.2"
+APP_VERSION = "6.7.3"
 
 RELEASE_NOTES = {
+    "6.7.3": {
+        "tr": """6.7.3 ile gelen yenilikler:
+
+BIRLESIK MAKSIMUM-UZUNLUK COZUCU (Gelismis Mod):
+- Maksimum uzunluk hedefinde compressible binary search, advanced mode aktifken segment bazli calculate_pressure_drop ile calisir.
+- Legacy mode: mevcut bulk-avg cozucu aynen korunur.
+- Iki cozucu arasinda <%%2 fark garantisi.""",
+        "en": """New features introduced in 6.7.3:
+
+UNIFIED MAX-LENGTH SOLVER (Advanced Mode):
+- In max-length target, the compressible binary search now uses segment-level calculate_pressure_drop when advanced mode is on.
+- Legacy mode: existing bulk-avg solver is preserved unchanged.
+- <2% difference guarantee between the two solvers.""",
+    },
     "6.7.2": {
         "tr": """6.7.2 ile gelen duzeltmeler ve yenilikler:
 

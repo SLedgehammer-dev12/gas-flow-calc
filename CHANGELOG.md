@@ -1,5 +1,12 @@
 # Changelog
 
+## 6.7.3
+
+### Unified Max-Length Solver (Advanced Mode)
+- **Max-length target**: When Advanced Mode is enabled, the compressible binary-search solver now uses segment-level `calculate_pressure_drop()` for each candidate length instead of bulk-average approximation.
+- **Legacy mode**: Existing bulk-avg solver preserved unchanged.
+- The two solvers produce results within <2% of each other on standard cases.
+
 ## 6.7.2
 
 ### Code Quality
