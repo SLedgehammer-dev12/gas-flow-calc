@@ -1,5 +1,20 @@
 # Changelog
 
+## 6.7.2
+
+### Code Quality
+- **main.py**: Removed duplicate `add_row("Kutlesel Debi", ...)` call that caused a `NameError` (the row was already added by `controllers.py`).
+- **flow/utils.py**: Added `Re < 2000 → f = 64/Re` laminar guard in `churchill_friction_factor()` to prevent overflow when Reynolds number is near zero.
+- **flow/utils.py**: Added density floor (`density_kg_m3 <= 0 → return 1e-6`) and Y exponent clamp in `lee_gonzalez_eakin_viscosity()`.
+
+### New Features (Advanced Mode)
+- **Advanced Mode toggle** added under the View menu (`menu_advanced_mode`).
+- **API RP 14E erosion velocity limit**: Each pipe material has a `C` factor (122 for carbon steel, 180 for stainless); erosion limit = `C / sqrt(density)`. Shown in results when Advanced Mode is on.
+- **Empirical model comparison**: Weymouth, Panhandle A, and Panhandle B flow equations are solved via binary-search pressure-drop solver and compared against Darcy-Weisbach + Churchill results. Shown in results when Advanced Mode is on.
+
+### Translations
+- Added TR/EN keys for `menu_advanced_mode`, `label_erosion_velocity`, `label_actual_velocity`, `label_empirical_comparison`.
+
 ## 6.7.1
 
 ### SSL Certificate Fallback (macOS/Linux)

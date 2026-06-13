@@ -34,6 +34,8 @@ from flow.utils import (
     single_phase_segment_loss,
     liquid_acceleration_loss,
     two_phase_segment_loss,
+    compute_empirical_pressure_drop,
+    compute_erosion_limit,
 )
 from thermo.utils import (
     cp_propssi, cp_abstract_state, build_gas_name_lookup,
@@ -1143,7 +1145,7 @@ class GasFlowCalculator:
         if transition_to_two_phase_m is not None:
             phase_info["transition_to_two_phase_m"] = transition_to_two_phase_m
 
-        return {
+        result = {
             "P_out": P_out, "delta_p_total": delta_p_total,
             "delta_p_pipe": delta_p_pipe, "delta_p_fittings": delta_p_fittings,
             "delta_p_acceleration": delta_p_acceleration,
@@ -1159,6 +1161,20 @@ class GasFlowCalculator:
             "phase_info": phase_info,
             "pressure_clamped": pressure_clamped,
         }
+
+        if inputs.get("advanced_mode"):
+            rho_avg = (gas_props_in["density"] + gas_props_out.get("density", gas_props_in["density"])) / 2.0
+            T_avg = T
+            Z_avg = (gas_props_in["Z"] + gas_props_out.get("Z", gas_props_in["Z"])) / 2.0
+            MW = gas_props_in["MW"]
+            empirical = compute_empirical_pressure_drop(
+                P_in, P_out, D_m, L, T_avg, MW, Z_avg, m_dot,
+            )
+            result["empirical"] = empirical
+            erosion_vel = compute_erosion_limit(rho_avg, inputs.get("material", "API 5L Grade B"))
+            result["erosion_velocity"] = erosion_vel
+
+        return result
 
     @staticmethod
     def _empty_profile_data(P, velocity=0.0):
@@ -1409,6 +1425,17 @@ class GasFlowCalculator:
             "velocity_out": velocity_in,
             "P_out": P_out_target if L_max > 0 else P_in,
         }
+
+        if inputs.get("advanced_mode") and L_max > 0:
+            Z_avg = gas_props_in.get("Z", 1.0)
+            MW = gas_props_in.get("MW", 16.04)
+            rho_avg = gas_props_in.get("density", 1.0)
+            empirical = compute_empirical_pressure_drop(
+                P_in, P_out_target if L_max > 0 else P_in, D_m, L_max, T, MW, Z_avg, m_dot,
+            )
+            result["empirical"] = empirical
+            erosion_vel = compute_erosion_limit(rho_avg, inputs.get("material", "API 5L Grade B"))
+            result["erosion_velocity"] = erosion_vel
 
         if L_max > 0:
             final_inputs = dict(inputs)
@@ -1663,6 +1690,11 @@ class GasFlowCalculator:
             "phase_info": final_result.get('phase_info'),
             "flow_mode": flow_mode,
         }
+
+        if inputs.get("advanced_mode"):
+            rho_avg = (gas_props_in["density"] + result["gas_props_out"].get("density", gas_props_in["density"])) / 2.0
+            erosion_vel = compute_erosion_limit(rho_avg, material)
+            result["erosion_velocity"] = erosion_vel
         
         return result
 

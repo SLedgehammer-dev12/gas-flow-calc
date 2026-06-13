@@ -131,7 +131,7 @@ class GasFlowController:
             "flow_mode": flow_mode,
             "target": target,
             "P_out_target": abs_pa_target if target == TARGET_MAX_LENGTH else 0,
-            
+
             # Min Diameter additions
             "max_velocity": max_vel,
             "optimize_weight": ui_state.get("opt_weight", False),
@@ -141,7 +141,8 @@ class GasFlowController:
             "SMYS": self._parse_float(ui_state.get("smys_val", 0)),
             "F": self._parse_float(ui_state.get("factor_f", 0.72)),
             "E": self._parse_float(ui_state.get("factor_e", 1.0)),
-            "T_factor": self._parse_float(ui_state.get("factor_t", 1.0))
+            "T_factor": self._parse_float(ui_state.get("factor_t", 1.0)),
+            "advanced_mode": ui_state.get("advanced_mode", False),
         }, None
 
     def get_results_table_data(self, result, target, ui_state):
@@ -215,5 +216,27 @@ class GasFlowController:
             transition_distance = phase_info.get('transition_to_two_phase_m')
             if transition_distance is not None:
                 rows.append((t("label_two_phase_transition", "İki Faz Geçişi"), safe_format(transition_distance, ".2f"), "m", tag))
+
+        if "erosion_velocity" in result:
+            erosion = result["erosion_velocity"]
+            vel = result.get("velocity_out", 0)
+            status = "success" if vel < erosion else "warning"
+            rows.append((t("label_erosion_velocity", "Erozyon Hız Limiti (API RP 14E)"), safe_format(erosion, ".2f"), "m/s", status))
+            rows.append((t("label_actual_velocity", "Gerçek Hız"), safe_format(vel, ".2f"), "m/s"))
+
+        if "empirical" in result:
+            rows.append(("", "", ""))
+            rows.append((f"--- {t('label_empirical_comparison', 'Empirik Model Karşılaştırması')} ---", "", "", "warning"))
+            emp = result["empirical"]
+            for model_key, label in [
+                ("weymouth", "Weymouth"),
+                ("panhandle_a", "Panhandle A"),
+                ("panhandle_b", "Panhandle B"),
+            ]:
+                entry = emp.get(model_key, {})
+                dp = entry.get("delta_p", 0)
+                p_out = entry.get("P_out", 0)
+                rows.append((label, safe_format(dp / 1e5, ".4f"), "bar"))
+                rows.append((f"  ↳ {t('label_outlet_pressure', 'Çıkış Basıncı')}", safe_format(p_out / 1e5, ".4f"), "bara"))
 
         return rows

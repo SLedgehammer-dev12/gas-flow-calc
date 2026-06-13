@@ -121,6 +121,7 @@ class GasFlowCalculatorApp:
         self.fitting_counts = {}
         self.ball_valve_kv = tk.DoubleVar(value=0.0)
         self.ball_valve_cv = tk.DoubleVar(value=0.0)
+        self.advanced_mode = tk.BooleanVar(value=False)
         self.log_queue = queue.Queue()
         self.calc_queue = queue.Queue()
         
@@ -242,6 +243,8 @@ class GasFlowCalculatorApp:
         view_menu.add_command(label="☀️  " + t("theme_light"), command=lambda: self.change_theme("light"))
         view_menu.add_command(label="🌙  " + t("theme_dark"), command=lambda: self.change_theme("dark"))
         view_menu.add_command(label="👁️  " + t("theme_contrast"), command=lambda: self.change_theme("contrast"))
+        view_menu.add_separator()
+        view_menu.add_checkbutton(label=t("menu_advanced_mode"), variable=self.advanced_mode)
         
         # Yardım Menüsü
         help_menu = Menu(menubar, tearoff=0)
@@ -831,9 +834,6 @@ class GasFlowCalculatorApp:
         for param, value, unit, *extra in rows:
             tag = extra[0] if extra else ""
             self.results_panel.add_result_row(param, value, unit, tag)
-
-        if "m_dot" in result:
-            add_row("Kutlesel Debi", f"{result['m_dot']:.4f}", "kg/s")
 
     def populate_profile_table(self, result):
         self.results_panel.clear_profile_table()

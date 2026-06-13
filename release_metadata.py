@@ -1,7 +1,33 @@
 APP_NAME = "Gas Flow Calc"
-APP_VERSION = "6.7.1"
+APP_VERSION = "6.7.2"
 
 RELEASE_NOTES = {
+    "6.7.2": {
+        "tr": """6.7.2 ile gelen duzeltmeler ve yenilikler:
+
+KOD KALITESI:
+- main.py: Tekrarlanan add_row("Kutlesel Debi") kaldirildi (duplicate bug).
+- flow/utils.py: Churchill surtunme faktorunde Re<2000 icin 64/Re laminer guard eklendi.
+- flow/utils.py: LGE viskozite formulunde negatif yogunluk guard'i eklendi.
+
+YENI OZELLIKLER (Gelismis Mod):
+- Gorunum menusune "Gelismis Mod" toggle eklendi.
+- Etkin: API RP 14E erozyon hiz limiti (malzemeye gore C faktoru).
+- Etkin: Weymouth, Panhandle A, Panhandle B empirik model karsilastirmasi.
+- Sonuclar tablosunda erozyon limidi ve empirik model farklari gosterilir.""",
+        "en": """Fixes and features introduced in 6.7.2:
+
+CODE QUALITY:
+- main.py: Removed duplicate add_row("Kutlesel Debi") call (NameError bug).
+- flow/utils.py: Added Re<2000 → f=64/Re laminar guard in Churchill friction factor.
+- flow/utils.py: Added density floor guard in LGE viscosity formula.
+
+NEW FEATURES (Advanced Mode):
+- Added "Advanced Mode" toggle under View menu.
+- When enabled: API RP 14E erosion velocity limit (material-based C factor).
+- When enabled: Weymouth, Panhandle A, Panhandle B empirical model comparison.
+- Erosion limit and empirical model differences shown in results table.""",
+    },
     "6.7.1": {
         "tr": """6.7.1 ile gelen duzeltmeler:
 

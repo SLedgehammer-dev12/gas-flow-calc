@@ -39,6 +39,7 @@ class MockApp:
         self.material_combo = _make_var(StringVar, "API 5L Grade B")
         self.opt_weight_var = _make_var(BooleanVar, False)
         self.fast_calc_var = _make_var(BooleanVar, True)
+        self.advanced_mode = _make_var(BooleanVar, False)
         self.len_var = _make_var(DoubleVar, 100.0)
         self.diam_var = _make_var(DoubleVar, 0.0)
         self.thick_var = _make_var(DoubleVar, 0.0)

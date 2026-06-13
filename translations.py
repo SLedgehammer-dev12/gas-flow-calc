@@ -256,6 +256,14 @@ TRANSLATIONS = {
         "show_graphs": "Grafikleri Göster",
         "save_report": "Raporu Kaydet",
         
+        # Advanced Mode
+        "menu_advanced_mode": "🔬 Gelişmiş Mod (Empirik / Erozyon / Isı)",
+        
+        # Empirical / Erosion
+        "label_erosion_velocity": "Erozyon Hız Limiti (API RP 14E)",
+        "label_actual_velocity": "Gerçek Hız",
+        "label_empirical_comparison": "Empirik Model Karşılaştırması",
+        
         # Menu - Help
         "menu_help": "Yardım",
         "menu_user_settings": "Kullanıcı Ayarları...",
@@ -759,6 +767,14 @@ REFERANSLAR:
         "calculating_progress": "Calculating... %",
         "show_graphs": "Show Graphs",
         "save_report": "Save Report",
+        
+        # Advanced Mode
+        "menu_advanced_mode": "🔬 Advanced Mode (Empirical / Erosion / Heat)",
+        
+        # Empirical / Erosion
+        "label_erosion_velocity": "Erosion Velocity Limit (API RP 14E)",
+        "label_actual_velocity": "Actual Velocity",
+        "label_empirical_comparison": "Empirical Model Comparison",
         
         # Menu - Help
         "menu_help": "Help",

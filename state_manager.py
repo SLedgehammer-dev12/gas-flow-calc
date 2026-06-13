@@ -81,7 +81,8 @@ class StateManager:
             "p_design_val": self.app.p_design_var.get(), "p_design_unit": self.app.p_design_unit.get(),
             "factor_f": self.app.factor_f.get(), "factor_e": self.app.factor_e.get(), "factor_t": self.app.factor_t.get(),
             "fitting_counts": fitting_data,
-            "ball_valve_kv": self.app.ball_valve_kv.get()
+            "ball_valve_kv": self.app.ball_valve_kv.get(),
+            "advanced_mode": self.app.advanced_mode.get()
         }
 
     def set_ui_state(self, data):
@@ -141,6 +142,7 @@ class StateManager:
         self.app.factor_e.set(data.get("factor_e", 1.0))
         self.app.factor_t.set(data.get("factor_t", 1.0))
         self.app.ball_valve_kv.set(data.get("ball_valve_kv", 0))
+        self.app.advanced_mode.set(data.get("advanced_mode", False))
 
         fit_data = data.get("fitting_counts", {})
         for name, val in fit_data.items():
