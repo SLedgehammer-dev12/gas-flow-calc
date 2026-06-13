@@ -1338,34 +1338,53 @@ class GasFlowCalculator:
             Re_final = Re; f_final = f; delta_p_pipe = available_delta_p_pipe
 
         else: # Sıkıştırılabilir (Binary Search)
-            def solve_outlet_pressure(length):
-                P1 = P_in
-                if length <= 0:
-                    P2 = P1
-                else:
-                    frac = min(1.0, length / max(1.0, L_high_limit))
-                    P2 = max(MIN_PRESSURE_PA, P1 - delta_p_total_target * frac)
-                Re = 0.0; f = 0.0; dp_pipe_local = 0.0; dp_fit_local = 0.0
+            advanced = inputs.get("advanced_mode", False)
+            P_min_length = None; Re_zero = 0.0; f_zero = 0.0; dp_fit_zero = 0.0
 
-                for _ in range(20):
-                    P_avg = (P1 + P2) / 2
-                    props = self.calculate_thermo_properties(P_avg, T, mole_fractions, library_choice, cp_state)
-                    rho = props['density']; mu = props['viscosity']; v = m_dot / (rho * A)
-                    Re = (rho * v * D_m) / mu; f = self.get_friction_factor(Re, relative_roughness)
+            if advanced:
+                def solve_outlet_pressure(length):
+                    if length <= 0:
+                        zr = self.calculate_pressure_drop(inputs, num_segments=4)
+                        return zr["P_out"], zr.get("Re", 0.0), zr.get("f", 0.0), zr.get("delta_p_pipe", 0.0), zr.get("delta_p_fittings", 0.0), zr
+                    seg_inputs = dict(inputs)
+                    seg_inputs["L"] = length
+                    seg_inputs["flow_mode"] = flow_mode
+                    calc = self.calculate_pressure_drop(seg_inputs, num_segments=8)
+                    return calc["P_out"], calc.get("Re", 0.0), calc.get("f", 0.0), calc.get("delta_p_pipe", 0.0), calc.get("delta_p_fittings", 0.0), calc
 
-                    dp_pipe_local = f * (length / D_m) * (rho * v**2) / 2
-                    dp_fit_local = total_k * (rho * v**2) / 2
-                    current_delta_p_total = dp_pipe_local + dp_fit_local
+                pmin = solve_outlet_pressure(0.0)
+                P_min_length = pmin[0]; Re_zero = pmin[1]; f_zero = pmin[2]; dp_fit_zero = pmin[4]
+            else:
+                def solve_outlet_pressure(length):
+                    P1 = P_in
+                    if length <= 0:
+                        P2 = P1
+                    else:
+                        frac = min(1.0, length / max(1.0, L_high_limit))
+                        P2 = max(MIN_PRESSURE_PA, P1 - delta_p_total_target * frac)
+                    Re_local = 0.0; f_local = 0.0; dp_pipe_local = 0.0; dp_fit_local = 0.0
 
-                    P2_new = max(MIN_PRESSURE_PA, P1 - current_delta_p_total)
-                    if abs(P2_new - P2) < 100:
+                    for _ in range(20):
+                        P_avg = (P1 + P2) / 2
+                        props = self.calculate_thermo_properties(P_avg, T, mole_fractions, library_choice, cp_state)
+                        rho = props['density']; mu = props['viscosity']; v = m_dot / (rho * A)
+                        Re_local = (rho * v * D_m) / mu; f_local = self.get_friction_factor(Re_local, relative_roughness)
+
+                        dp_pipe_local = f_local * (length / D_m) * (rho * v**2) / 2
+                        dp_fit_local = total_k * (rho * v**2) / 2
+                        current_delta_p_total = dp_pipe_local + dp_fit_local
+
+                        P2_new = max(MIN_PRESSURE_PA, P1 - current_delta_p_total)
+                        if abs(P2_new - P2) < 100:
+                            P2 = P2_new
+                            break
                         P2 = P2_new
-                        break
-                    P2 = P2_new
 
-                return P2, Re, f, dp_pipe_local, dp_fit_local
+                    return P2, Re_local, f_local, dp_pipe_local, dp_fit_local, None
 
-            P_min_length, Re_zero, f_zero, _, dp_fit_zero = solve_outlet_pressure(0.0)
+                pmin = solve_outlet_pressure(0.0)
+                P_min_length = pmin[0]; Re_zero = pmin[1]; f_zero = pmin[2]; dp_fit_zero = pmin[4]
+
             if P_min_length < P_out_target:
                 return {
                     "L_max": 0,
@@ -1390,7 +1409,7 @@ class GasFlowCalculator:
             L_high = L_high_limit
 
             def _f_comp(length_val):
-                P2, _, _, _, _ = solve_outlet_pressure(length_val)
+                P2, _, _, _, _, _ = solve_outlet_pressure(length_val)
                 return P2 - P_out_target
 
             try:
@@ -1410,7 +1429,7 @@ class GasFlowCalculator:
                         break
                 L_max = L_low
 
-            _, Re_final, f_final, delta_p_pipe, delta_p_fittings = solve_outlet_pressure(L_max)
+            _, Re_final, f_final, delta_p_pipe, delta_p_fittings, _ = solve_outlet_pressure(L_max)
 
         result = {
             "L_max": L_max, 
